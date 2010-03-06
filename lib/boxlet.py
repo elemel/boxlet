@@ -62,8 +62,8 @@ class GameEngine(object):
         body_def.angle = math.pi / 4.0
         self.test_body = self.world.CreateBody(body_def)
         shape_def = b2CircleDef()
-        shape_def.localPosition = 0.0, 0.0
-        shape_def.radius = 1.0
+        shape_def.localPosition = 1.0, 3.0
+        shape_def.radius = 2.0
         self.test_shape = self.test_body.CreateShape(shape_def)
 
     def step(self, dt):
@@ -148,8 +148,10 @@ class MyDebugDraw(b2DebugDraw):
         self.display_list = glGenLists(1)
         self.circle_display_list = CircleDisplayList()
         self.axis_color = b2Color(1.0, 0.0, 1.0)
+        self.compiling = False
 
     def delete(self):
+        assert not self.compiling
         if self.circle_display_list is not None:
             self.circle_display_list.delete()
             self.circle_display_list = None
@@ -159,6 +161,8 @@ class MyDebugDraw(b2DebugDraw):
 
     @contextlib.contextmanager
     def compile(self):
+        assert not self.compiling
+        self.compiling = True
         glNewList(self.display_list, GL_COMPILE)
         glPushAttrib(GL_ALL_ATTRIB_BITS)
         glPushMatrix()
@@ -166,15 +170,19 @@ class MyDebugDraw(b2DebugDraw):
         glPopMatrix()
         glPopAttrib()
         glEndList()
+        self.compiling = False
 
     def draw(self):
+        assert not self.compiling
         glCallList(self.display_list)
 
     def DrawCircle(self, center, radius, color):
+        assert self.compiling
         glColor3f(color.r, color.g, color.b)
         self.circle_display_list.draw(center.tuple(), radius, GL_LINE_LOOP)
 
     def DrawSegment(self, p1, p2, color):
+        assert self.compiling
         glColor3f(color.r, color.g, color.b)
         glBegin(GL_LINES)
         glVertex2f(p1.x, p1.y)
@@ -182,17 +190,20 @@ class MyDebugDraw(b2DebugDraw):
         glEnd()
 
     def DrawXForm(self, xf):
+        assert self.compiling
         glPopMatrix()
         glPushMatrix()
         glTranslatef(xf.position.x, xf.position.y, 0.0)
         glRotatef(xf.R.GetAngle() * 180.0 / math.pi, 0.0, 0.0, 1.0)
 
     def DrawSolidCircle(self, center, radius, axis, color):
+        assert self.compiling
         glColor3f(color.r, color.g, color.b)
         self.circle_display_list.draw(center.tuple(), radius, GL_POLYGON)
-        self.DrawSegment(center, center + axis, self.axis_color)
+        self.DrawSegment(center, center + radius * axis, self.axis_color)
 
     def DrawPolygon(self, vertices, vertexCount, color):
+        assert self.compiling
         glColor3f(color.r, color.g, color.b)
         glBegin(GL_LINE_LOOP)
         for i in xrange(vertexCount):
@@ -200,6 +211,7 @@ class MyDebugDraw(b2DebugDraw):
         glEnd()
 
     def DrawSolidPolygon(self, vertices, vertexCount, color):
+        assert self.compiling
         glColor3f(color.r, color.g, color.b)
         glBegin(GL_POLYGON)
         for i in xrange(vertexCount):
