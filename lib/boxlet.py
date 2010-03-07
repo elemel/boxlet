@@ -4,18 +4,219 @@ import math
 import pyglet
 from pyglet.gl import *
 
-class Actor(object):
-    def __init__(self, game_engine):
-        self.game_engine = game_engine
-        self.game_engine.actors.add(self)
+class BodyData(object):
+    def __init__(self, actor, body):
+        assert isinstance(actor, Actor)
+        assert isinstance(body, b2Body)
+        self.actor = actor
+        self.actor.bodies.add(self)
+        self.body = body
+        self.body.userData = self
+
+    @property
+    def joints(self):
+        joints = []
+        if self.body is not None:
+            joint_edge = self.body.GetJointList()
+            while joint_edge is not None:
+                joint_data = joint_edge.joint.userData
+                assert isinstance(joint_data, JointData)
+                joints.append(joint_data)
+                joint_edge = joint_edge.next
+        return joints
+
+    @property
+    def shapes(self):
+        shapes = []
+        if self.body is not None:
+            for shape in self.body.GetShapeList():
+                shape_data = shape.userData
+                assert isinstance(shape_data, ShapeData)
+                shapes.append(shape_data)
+        return shapes
 
     def delete(self):
+        for joint_data in self.joints:
+            joint_data.delete()
+        for shape_data in self.shapes:
+            shape_data.delete()
+        if self.body is not None:
+            self.body.userData = None
+            self.body.GetWorld().DestroyBody(self.body)
+            self.body = None
+        if self.actor is not None:
+            self.actor.bodies.remove(self)
+            self.actor = None
+
+class ShapeData(object):
+    def __init__(self, actor, shape):
+        assert isinstance(actor, Actor)
+        assert isinstance(shape, b2Shape)
+        self.actor = actor
+        self.actor.shapes.add(self)
+        self.shape = shape
+        self.shape.userData = self
+
+    def delete(self):
+        if self.shape is not None:
+            self.shape.userData = None
+            self.shape.GetBody().DestroyShape(self.shape)
+            self.shape = None
+        if self.actor is not None:
+            self.actor.shapes.remove(self)
+            self.actor = None
+
+class JointData(object):
+    def __init__(self, actor, joint):
+        assert isinstance(actor, Actor)
+        assert isinstance(joint, b2Joint)
+        self.actor = actor
+        self.actor.joints.add(self)
+        self.joint = joint
+        self.joint.userData = self
+
+    def delete(self):
+        if self.joint is not None:
+            self.joint.userData = None
+            self.joint.GetBody1().GetWorld().DestroyJoint(self.joint)
+            self.joint = None
+        if self.actor is not None:
+            self.actor.joints.remove(self)
+            self.actor = None
+
+class Actor(object):
+    def __init__(self, game_engine):
+        assert isinstance(game_engine, GameEngine)
+        self.game_engine = game_engine
+        self.game_engine.actors.add(self)
+        self.group_index = game_engine.generate_group_index()
+        self.bodies = set()
+        self.shapes = set()
+        self.joints = set()
+
+    def delete(self):
+        for joint_data in list(self.joints):
+            joint_data.delete()
+        assert not self.joints
+        for shape_data in list(self.shapes):
+            shape_data.delete()
+        assert not self.shapes
+        for body_data in list(self.bodies):
+            body_data.delete()
+        assert not self.bodies
         if self.game_engine is not None:
             self.game_engine.actors.remove(self)
             self.game_engine = None
 
+    @property
+    def first_body_position(self):
+        for body_data in self.bodies:
+            return body_data.body.position.tuple()
+        return 0.0, 0.0
+
+    def create_body(self, position=(0.0, 0.0), angle=0.0,
+                    linear_velocity=(0.0, 0.0), angular_velocity=0.0,
+                    angular_damping=0.0):
+        body_def = b2BodyDef()
+        body_def.position = position
+        body_def.angle = angle
+        body_def.angularDamping = angular_damping
+        body = self.game_engine.world.CreateBody(body_def)
+        body.SetLinearVelocity(linear_velocity)
+        body.SetAngularVelocity(angular_velocity)
+        return BodyData(self, body)
+
+    def create_circle_shape(self, body_data, local_position=(0.0, 0.0),
+                            radius=1.0, density=0.0, friction=0.2,
+                            restitution=0.0, group_index=0):
+        assert isinstance(body_data, BodyData)
+        assert body_data.body is not None
+        assert body_data.actor is self
+        shape_def = b2CircleDef()
+        shape_def.localPosition = local_position
+        shape_def.radius = radius
+        shape_def.density = density
+        shape_def.friction = friction
+        shape_def.restitution = restitution
+        shape_def.filter.groupIndex = group_index
+        shape = body_data.body.CreateShape(shape_def)
+        body_data.body.SetMassFromShapes()
+        return ShapeData(self, shape)
+
+    def create_polygon_shape(self, body_data, vertices=None, density=0.0,
+                             friction=0.2, restitution=0.0, group_index=0):
+        assert isinstance(body_data, BodyData)
+        assert body_data.body is not None
+        assert body_data.actor is self
+        if vertices is None:
+            vertices = [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)]
+        shape_def = b2PolygonDef()
+        shape_def.vertices = vertices
+        shape_def.density = density
+        shape_def.friction = friction
+        shape_def.restitution = restitution
+        shape_def.filter.groupIndex = group_index
+        shape = body_data.body.CreateShape(shape_def)
+        body_data.body.SetMassFromShapes()
+        return ShapeData(self, shape)
+
+    def create_box_shape(self, body_data, half_width=1.0, half_height=1.0,
+                         local_position=(0.0, 0.0), angle=0.0, density=0.0,
+                         friction=0.2, restitution=0.0, group_index=0):
+        assert isinstance(body_data, BodyData)
+        assert body_data.body is not None
+        assert body_data.actor is self
+        shape_def = b2PolygonDef()
+        shape_def.SetAsBox(half_width, half_height, local_position, angle)
+        shape_def.density = density
+        shape_def.friction = friction
+        shape_def.restitution = restitution
+        shape_def.filter.groupIndex = group_index
+        shape = body_data.body.CreateShape(shape_def)
+        body_data.body.SetMassFromShapes()
+        return ShapeData(self, shape)
+
+    def create_revolute_joint(self, body_data_1, body_data_2, anchor):
+        joint_def = b2RevoluteJointDef()
+        joint_def.Initialize(body_data_1.body, body_data_2.body, anchor)
+        joint = self.game_engine.world.CreateJoint(joint_def)
+        return JointData(self, joint)
+
+    def create_distance_joint(self, body_data_1, body_data_2, anchor_1,
+                              anchor_2):
+        joint_def = b2DistanceJointDef()
+        joint_def.Initialize(body_data_1.body, body_data_2.body, anchor_1,
+                             anchor_2)
+        joint = self.game_engine.world.CreateJoint(joint_def)
+        return JointData(self, joint)
+
     def draw(self):
         pass
+
+class TestPlatform(Actor):
+    def __init__(self, game_engine, position=(0.0, 0.0), angle=0.0):
+        super(TestPlatform, self).__init__(game_engine)
+        body_data = self.create_body(position=position)
+        self.create_box_shape(body_data, half_width=5.0, half_height=0.1,
+                              angle=angle)
+
+class TestVehicle(Actor):
+    def __init__(self, game_engine, position=(0.0, 0.0)):
+        super(TestVehicle, self).__init__(game_engine)
+        position = b2Vec2(position[0], position[1])
+        body_data_1 = self.create_body(position=position)
+        self.create_box_shape(body_data_1, half_width=1.0, half_height=0.5,
+                              density=1000.0, group_index=-self.group_index)
+        body_data_2 = self.create_body(position=(position + b2Vec2(-0.7, -0.4)))
+        self.create_circle_shape(body_data_2, radius=0.5, density=100.0,
+                                 group_index=-self.group_index)
+        self.create_revolute_joint(body_data_1, body_data_2,
+                                   body_data_2.body.GetWorldCenter())
+        body_data_3 = self.create_body(position=(position + b2Vec2(0.7, -0.4)))
+        self.create_circle_shape(body_data_3, radius=0.5, density=100.0,
+                                 group_index=-self.group_index)
+        self.create_revolute_joint(body_data_1, body_data_3,
+                                   body_data_3.body.GetWorldCenter())
 
 class Controller(object):
     def __init__(self, game_engine):
@@ -30,26 +231,57 @@ class Controller(object):
     def step(self, dt):
         pass
 
-class Camera(object):
-    def __init__(self):
+class Camera(Actor):
+    def __init__(self, game_engine):
+        super(Camera, self).__init__(game_engine)
         self.scale = 50.0
         self.position = 0.0, 0.0
+
+    @contextlib.contextmanager
+    def transform(self, width, height):
+        glPushMatrix()
+        glTranslatef(float(width // 2), float(height // 2), 0.0)
+        glScalef(self.scale, self.scale, self.scale)
+        x, y = self.position
+        glTranslatef(-x, -y, 0.0)
+        yield None
+        glPopMatrix()
+
+class MyDestructionListener(b2DestructionListener):
+    def __init__(self):
+        super(MyDestructionListener, self).__init__()
+
+    def SayGoodbye(self, shape_or_joint):
+        assert False
 
 class GameEngine(object):
     def __init__(self):
         self.time = 0.0
+        self._next_group_index = 1
         self._init_world()
+        self.player_actor = None
         self.debug_draw = MyDebugDraw()
         self.world.SetDebugDraw(self.debug_draw)
+        self.destruction_listener = MyDestructionListener()
+        self.world.SetDestructionListener(self.destruction_listener)        
         self.scheduler = Scheduler()
         self.actors = set()
         self.controllers = set()
-        self.camera = Camera()
+        self.camera = Camera(self)
+        self._init_test_actors()
 
     def delete(self):
+        for actor in list(self.actors):
+            actor.delete()
+        assert not self.actors
         if self.debug_draw is not None:
             self.debug_draw.delete()
             self.debug_draw = None
+
+    def generate_group_index(self):
+        group_index = self._next_group_index
+        self._next_group_index += 1
+        return group_index
 
     def _init_world(self):
         aabb = b2AABB()
@@ -57,14 +289,11 @@ class GameEngine(object):
         aabb.upperBound = 1000.0, 1000.0
         gravity = 0.0, -10.0
         self.world = b2World(aabb, gravity, True)
-        
-        body_def = b2BodyDef()
-        body_def.angle = math.pi / 4.0
-        self.test_body = self.world.CreateBody(body_def)
-        shape_def = b2CircleDef()
-        shape_def.localPosition = 1.0, 3.0
-        shape_def.radius = 2.0
-        self.test_shape = self.test_body.CreateShape(shape_def)
+
+    def _init_test_actors(self):
+        TestPlatform(self, angle=-0.2)
+        TestPlatform(self, position=(9.0, -2.0), angle=0.1)
+        self.player_actor = TestVehicle(self, position=(-3.0, 3.0))
 
     def step(self, dt):
         self.time += dt
@@ -82,14 +311,13 @@ class GameEngine(object):
                 controller.step(dt)
 
     def draw(self, width, height):
-        glPushMatrix()
-        glTranslatef(float(width // 2), float(height // 2), 0.0)
-        glScalef(self.camera.scale, self.camera.scale, self.camera.scale)
-        for actor in self.actors:
-            actor.draw()
-        if self.debug_draw is not None:
-            self.debug_draw.draw()
-        glPopMatrix()
+        if self.player_actor is not None:
+            self.camera.position = self.player_actor.first_body_position
+        with self.camera.transform(width, height):
+            for actor in self.actors:
+                actor.draw()
+            if self.debug_draw is not None:
+                self.debug_draw.draw()
 
 class Scheduler(object):
     def __init__(self):
@@ -229,6 +457,7 @@ class MyWindow(pyglet.window.Window):
 
     def close(self):
         pyglet.clock.unschedule(self.step)
+        self.game_engine.delete()
         super(MyWindow, self).close()
 
     def on_draw(self):
@@ -242,7 +471,9 @@ class MyWindow(pyglet.window.Window):
             self.game_engine.step(self.dt)
 
 def main():
-    window = MyWindow(fullscreen=True)
+    config = pyglet.gl.Config(double_buffer=True, sample_buffers=1, samples=4,
+                              depth_size=8)
+    window = MyWindow(config=config)
     pyglet.app.run()
 
 if __name__ == '__main__':
