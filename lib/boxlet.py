@@ -193,16 +193,16 @@ class Actor(object):
     def draw(self):
         pass
 
-class TestPlatform(Actor):
+class TestPlatformActor(Actor):
     def __init__(self, game_engine, position=(0.0, 0.0), angle=0.0):
-        super(TestPlatform, self).__init__(game_engine)
+        super(TestPlatformActor, self).__init__(game_engine)
         body_data = self.create_body(position=position)
         self.create_box_shape(body_data, half_width=5.0, half_height=0.1,
                               angle=angle)
 
-class TestVehicle(Actor):
+class TestVehicleActor(Actor):
     def __init__(self, game_engine, position=(0.0, 0.0)):
-        super(TestVehicle, self).__init__(game_engine)
+        super(TestVehicleActor, self).__init__(game_engine)
         position = b2Vec2(position[0], position[1])
         body_data_1 = self.create_body(position=position)
         self.create_box_shape(body_data_1, half_width=1.0, half_height=0.5,
@@ -231,9 +231,9 @@ class Controller(object):
     def step(self, dt):
         pass
 
-class Camera(Actor):
+class CameraActor(Actor):
     def __init__(self, game_engine):
-        super(Camera, self).__init__(game_engine)
+        super(CameraActor, self).__init__(game_engine)
         self.scale = 50.0
         self.position = 0.0, 0.0
 
@@ -267,7 +267,7 @@ class GameEngine(object):
         self.scheduler = Scheduler()
         self.actors = set()
         self.controllers = set()
-        self.camera = Camera(self)
+        self.camera_actor = CameraActor(self)
         self._init_test_actors()
 
     def delete(self):
@@ -291,9 +291,9 @@ class GameEngine(object):
         self.world = b2World(aabb, gravity, True)
 
     def _init_test_actors(self):
-        TestPlatform(self, angle=-0.2)
-        TestPlatform(self, position=(9.0, -2.0), angle=0.1)
-        self.player_actor = TestVehicle(self, position=(-3.0, 3.0))
+        TestPlatformActor(self, angle=-0.2)
+        TestPlatformActor(self, position=(9.0, -2.0), angle=0.1)
+        self.player_actor = TestVehicleActor(self, position=(-3.0, 3.0))
 
     def step(self, dt):
         self.time += dt
@@ -312,8 +312,8 @@ class GameEngine(object):
 
     def draw(self, width, height):
         if self.player_actor is not None:
-            self.camera.position = self.player_actor.first_body_position
-        with self.camera.transform(width, height):
+            self.camera_actor.position = self.player_actor.first_body_position
+        with self.camera_actor.transform(width, height):
             for actor in self.actors:
                 actor.draw()
             if self.debug_draw is not None:
