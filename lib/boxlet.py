@@ -9,6 +9,19 @@ def get_box_vertices(half_width=1.0, half_height=1.0):
     return [(-half_width, -half_height), (half_width, -half_height),
             (half_width, half_height), (-half_width, half_height)]
 
+class Controller(object):
+    def __init__(self, game_engine):
+        self.game_engine = game_engine
+        self.game_engine.controllers.add(self)
+
+    def delete(self):
+        if self.game_engine is not None:
+            self.game_engine.controllers.remove(self)
+            self.game_engine = None
+
+    def step(self, dt):
+        pass
+
 class BodyData(object):
     def __init__(self, actor, body):
         assert isinstance(actor, Actor)
@@ -168,10 +181,13 @@ class Actor(object):
         body_data.body.SetMassFromShapes()
         return ShapeData(self, shape)
 
-    def create_revolute_joint(self, body_data_1, body_data_2, anchor):
+    def create_revolute_joint(self, body_data_1, body_data_2, anchor,
+                              motor_speed=0.0, max_motor_torque=0.0):
         joint_def = b2RevoluteJointDef()
         joint_def.Initialize(body_data_1.body, body_data_2.body, anchor)
-        joint = self.game_engine.world.CreateJoint(joint_def)
+        joint_def.motorSpeed = motor_speed
+        joint_def.maxMotorTorque = max_motor_torque
+        joint = self.game_engine.world.CreateJoint(joint_def).asRevoluteJoint()
         return JointData(self, joint)
 
     def create_distance_joint(self, body_data_1, body_data_2, anchor_1,
@@ -179,10 +195,16 @@ class Actor(object):
         joint_def = b2DistanceJointDef()
         joint_def.Initialize(body_data_1.body, body_data_2.body, anchor_1,
                              anchor_2)
-        joint = self.game_engine.world.CreateJoint(joint_def)
+        joint = self.game_engine.world.CreateJoint(joint_def).asDistanceJoint()
         return JointData(self, joint)
 
     def draw(self):
+        pass
+
+    def on_key_press(self, key, modifiers):
+        pass
+
+    def on_key_release(self, key, modifiers):
         pass
 
 class WaterActor(Actor):
@@ -214,36 +236,59 @@ class TestPlatformActor(Actor):
         body_data = self.create_body(position=position, angle=angle)
         self.create_polygon_shape(body_data, vertices=get_box_vertices(5.0, 0.1))
 
+class TestVehicleController(Controller):
+    def __init__(self, game_engine, actor):
+        super(TestVehicleController, self).__init__(game_engine)
+        self.actor = actor
+        self.left = False
+        self.right = False
+        self.torque = 5000.0
+
+    def step(self, dt):
+        if self.left or self.right:
+            torque = self.torque * (self.left - self.right)
+            self.actor.frame_data.body.ApplyTorque(torque)
+
 class TestVehicleActor(Actor):
     def __init__(self, game_engine, position=(0.0, 0.0)):
         super(TestVehicleActor, self).__init__(game_engine)
         position = b2Vec2(position[0], position[1])
-        body_data_1 = self.create_body(position=position)
-        self.create_polygon_shape(body_data_1, vertices=get_box_vertices(1.0, 0.5),
+        self.frame_data = self.create_body(position=position)
+        self.create_polygon_shape(self.frame_data, vertices=get_box_vertices(1.0, 0.5),
                               density=1000.0, group_index=-self.group_index)
-        body_data_2 = self.create_body(position=(position + b2Vec2(-0.7, -0.4)))
-        self.create_circle_shape(body_data_2, radius=0.5, density=100.0,
+        self.left_wheel_data = self.create_body(position=(position + b2Vec2(-0.7, -0.4)))
+        self.create_circle_shape(self.left_wheel_data, radius=0.5, density=100.0, friction=5.0,
                                  group_index=-self.group_index)
-        self.create_revolute_joint(body_data_1, body_data_2,
-                                   body_data_2.body.GetWorldCenter())
-        body_data_3 = self.create_body(position=(position + b2Vec2(0.7, -0.4)))
-        self.create_circle_shape(body_data_3, radius=0.5, density=100.0,
+        self.left_joint_data = self.create_revolute_joint(self.frame_data, self.left_wheel_data,
+                                                          self.left_wheel_data.body.GetWorldCenter(), motor_speed=-20.0, max_motor_torque=10000.0)
+        self.right_wheel_data = self.create_body(position=(position + b2Vec2(0.7, -0.4)))
+        self.create_circle_shape(self.right_wheel_data, radius=0.5, density=100.0, friction=5.0,
                                  group_index=-self.group_index)
-        self.create_revolute_joint(body_data_1, body_data_3,
-                                   body_data_3.body.GetWorldCenter())
-
-class Controller(object):
-    def __init__(self, game_engine):
-        self.game_engine = game_engine
-        self.game_engine.controllers.add(self)
+        self.right_joint_data = self.create_revolute_joint(self.frame_data, self.right_wheel_data,
+                                                      self.right_wheel_data.body.GetWorldCenter(), motor_speed=20.0, max_motor_torque=10000.0)
+        self.controller = TestVehicleController(self.game_engine, self)
 
     def delete(self):
-        if self.game_engine is not None:
-            self.game_engine.controllers.remove(self)
-            self.game_engine = None
+        self.controller.delete()
+        super(TestVehicleActor, self).delete()
 
-    def step(self, dt):
-        pass
+    def on_key_press(self, key, modifiers):
+        if key == pyglet.window.key.LEFT:
+            self.right_joint_data.joint.enableMotor = True
+            self.controller.left = True
+            self.right_wheel_data.body.WakeUp()
+        if key == pyglet.window.key.RIGHT:
+            self.left_joint_data.joint.enableMotor = True
+            self.controller.right = True
+            self.left_wheel_data.body.WakeUp()
+
+    def on_key_release(self, key, modifiers):
+        if key == pyglet.window.key.LEFT:
+            self.right_joint_data.joint.enableMotor = False
+            self.controller.left = False
+        if key == pyglet.window.key.RIGHT:
+            self.left_joint_data.joint.enableMotor = False
+            self.controller.right = False
 
 class CameraActor(Actor):
     def __init__(self, game_engine):
@@ -334,6 +379,14 @@ class GameEngine(object):
                 actor.draw()
             if self.debug_draw is not None:
                 self.debug_draw.draw()
+
+    def on_key_press(self, key, modifiers):
+        if self.player_actor is not None:
+            self.player_actor.on_key_press(key, modifiers)
+
+    def on_key_release(self, key, modifiers):
+        if self.player_actor is not None:
+            self.player_actor.on_key_release(key, modifiers)
 
 class Scheduler(object):
     def __init__(self):
@@ -493,6 +546,15 @@ class MyWindow(pyglet.window.Window):
         self.time += dt
         while self.game_engine.time + self.dt <= self.time:
             self.game_engine.step(self.dt)
+
+    def on_key_press(self, key, modifiers):
+        if key == pyglet.window.key.ESCAPE:
+            self.close()
+        else:
+            self.game_engine.on_key_press(key, modifiers)
+
+    def on_key_release(self, key, modifiers):
+        self.game_engine.on_key_release(key, modifiers)
 
 def main():
     config = pyglet.gl.Config(double_buffer=True, sample_buffers=1, samples=4,
