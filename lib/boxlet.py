@@ -3,6 +3,11 @@ import contextlib
 import math
 import pyglet
 from pyglet.gl import *
+import shader
+
+def get_box_vertices(half_width=1.0, half_height=1.0):
+    return [(-half_width, -half_height), (half_width, -half_height),
+            (half_width, half_height), (-half_width, half_height)]
 
 class BodyData(object):
     def __init__(self, actor, body):
@@ -128,7 +133,7 @@ class Actor(object):
 
     def create_circle_shape(self, body_data, local_position=(0.0, 0.0),
                             radius=1.0, density=0.0, friction=0.2,
-                            restitution=0.0, group_index=0):
+                            restitution=0.0, group_index=0, sensor=False):
         assert isinstance(body_data, BodyData)
         assert body_data.body is not None
         assert body_data.actor is self
@@ -139,39 +144,26 @@ class Actor(object):
         shape_def.friction = friction
         shape_def.restitution = restitution
         shape_def.filter.groupIndex = group_index
+        shape_def.isSensor = sensor
         shape = body_data.body.CreateShape(shape_def)
         body_data.body.SetMassFromShapes()
         return ShapeData(self, shape)
 
     def create_polygon_shape(self, body_data, vertices=None, density=0.0,
-                             friction=0.2, restitution=0.0, group_index=0):
+                             friction=0.2, restitution=0.0, group_index=0,
+                             sensor=False):
         assert isinstance(body_data, BodyData)
         assert body_data.body is not None
         assert body_data.actor is self
         if vertices is None:
-            vertices = [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)]
+            vertices = get_box_vertices()
         shape_def = b2PolygonDef()
         shape_def.vertices = vertices
         shape_def.density = density
         shape_def.friction = friction
         shape_def.restitution = restitution
         shape_def.filter.groupIndex = group_index
-        shape = body_data.body.CreateShape(shape_def)
-        body_data.body.SetMassFromShapes()
-        return ShapeData(self, shape)
-
-    def create_box_shape(self, body_data, half_width=1.0, half_height=1.0,
-                         local_position=(0.0, 0.0), angle=0.0, density=0.0,
-                         friction=0.2, restitution=0.0, group_index=0):
-        assert isinstance(body_data, BodyData)
-        assert body_data.body is not None
-        assert body_data.actor is self
-        shape_def = b2PolygonDef()
-        shape_def.SetAsBox(half_width, half_height, local_position, angle)
-        shape_def.density = density
-        shape_def.friction = friction
-        shape_def.restitution = restitution
-        shape_def.filter.groupIndex = group_index
+        shape_def.isSensor = sensor
         shape = body_data.body.CreateShape(shape_def)
         body_data.body.SetMassFromShapes()
         return ShapeData(self, shape)
@@ -193,19 +185,41 @@ class Actor(object):
     def draw(self):
         pass
 
+class WaterActor(Actor):
+    def __init__(self, game_engine, vertices=None, color=(0.0, 0.5, 1.0)):
+        super(WaterActor, self).__init__(game_engine)
+        body_data = self.create_body()
+        shape_data = self.create_polygon_shape(body_data, vertices, sensor=True)
+        self.surface_y = body_data.body.position.y
+        self.vertices = shape_data.shape.asPolygon().vertices
+        self.color = color
+
+    def draw(self):
+        with self.game_engine.water_shader as shader:
+            shader.uniformf('time', self.game_engine.time)
+            shader.uniformf('surface_y', self.surface_y)
+            shader.uniformf('wave_height', 0.2)
+            shader.uniformf('wave_length', 1.0)
+            shader.uniformf('wave_speed', 0.15)
+            glColor3f(*self.color)
+            glBegin(GL_POLYGON)
+            for x, y in self.vertices:
+                glTexCoord2f(x, y)
+                glVertex2f(x, y)
+            glEnd()
+
 class TestPlatformActor(Actor):
     def __init__(self, game_engine, position=(0.0, 0.0), angle=0.0):
         super(TestPlatformActor, self).__init__(game_engine)
-        body_data = self.create_body(position=position)
-        self.create_box_shape(body_data, half_width=5.0, half_height=0.1,
-                              angle=angle)
+        body_data = self.create_body(position=position, angle=angle)
+        self.create_polygon_shape(body_data, vertices=get_box_vertices(5.0, 0.1))
 
 class TestVehicleActor(Actor):
     def __init__(self, game_engine, position=(0.0, 0.0)):
         super(TestVehicleActor, self).__init__(game_engine)
         position = b2Vec2(position[0], position[1])
         body_data_1 = self.create_body(position=position)
-        self.create_box_shape(body_data_1, half_width=1.0, half_height=0.5,
+        self.create_polygon_shape(body_data_1, vertices=get_box_vertices(1.0, 0.5),
                               density=1000.0, group_index=-self.group_index)
         body_data_2 = self.create_body(position=(position + b2Vec2(-0.7, -0.4)))
         self.create_circle_shape(body_data_2, radius=0.5, density=100.0,
@@ -267,6 +281,8 @@ class GameEngine(object):
         self.scheduler = Scheduler()
         self.actors = set()
         self.controllers = set()
+        water_frag = pyglet.resource.file('water.frag').read()
+        self.water_shader = MyShader(frag=[water_frag])
         self.camera_actor = CameraActor(self)
         self._init_test_actors()
 
@@ -445,6 +461,14 @@ class MyDebugDraw(b2DebugDraw):
         for i in xrange(vertexCount):
             glVertex2f(*vertices[i])
         glEnd()
+
+class MyShader(shader.Shader):
+    def __enter__(self):
+        self.bind()
+        return self
+
+    def __exit__(self, *args):
+        self.unbind()
 
 class MyWindow(pyglet.window.Window):
     def __init__(self, **kwargs):
