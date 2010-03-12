@@ -5,9 +5,39 @@ import pyglet
 from pyglet.gl import *
 import shader
 
+def clamp(x, min_x, max_x):
+    return min(max(x, min_x), max_x)
+
 def get_box_vertices(half_width=1.0, half_height=1.0):
     return [(-half_width, -half_height), (half_width, -half_height),
             (half_width, half_height), (-half_width, half_height)]
+
+def get_circle_vertices(center=(0.0, 0.0), radius=1.0, angle=0.0, count=16):
+    vertices = []
+    x, y = center
+    for i in xrange(count):
+        a = angle + 2.0 * math.pi * float(i) / float(count)
+        vertex = x + radius * math.cos(a), y + radius * math.sin(a)
+        vertices.append(vertex)
+    return vertices
+
+def get_circle_triangles(center=(0.0, 0.0), radius=1.0, count=16):
+    vertices = get_circle_vertices(center, radius, count)
+    triangles = []
+    for i in xrange(count):
+        j = (i + 1) % count
+        triangle = center, vertices[i], vertices[j]
+        triangles.append(triangle)
+    return triangles
+
+def get_polygon_triangles(vertices):
+    centroid = vertices[0]
+    triangles = []
+    for i in xrange(len(vertices)):
+        j = (i + 1) % len(vertices)
+        triangle = centroid, vertices[i], vertices[j]
+        triangles.append(triangle)
+    return triangles
 
 class Controller(object):
     def __init__(self, game_engine):
@@ -30,6 +60,8 @@ class BodyData(object):
         self.actor.bodies.add(self)
         self.body = body
         self.body.userData = self
+        self.vertex_list_dirty = True
+        self.vertex_list = None
 
     @property
     def joints(self):
@@ -54,6 +86,9 @@ class BodyData(object):
         return shapes
 
     def delete(self):
+        if self.vertex_list is not None:
+            self.vertex_list.delete()
+            self.vertex_list = None
         for joint_data in self.joints:
             joint_data.delete()
         for shape_data in self.shapes:
@@ -66,14 +101,44 @@ class BodyData(object):
             self.actor.bodies.remove(self)
             self.actor = None
 
+    def draw(self):
+        if self.vertex_list_dirty:
+            self.vertex_list = self.create_vertex_list()
+            self.vertex_list_dirty = False
+        if self.vertex_list is not None:
+            glPushMatrix()
+            glTranslatef(self.body.position.x, self.body.position.y, 0.0)
+            glRotatef(self.body.angle * 180.0 / math.pi, 0.0, 0.0, 1.0)
+            self.vertex_list.draw(GL_TRIANGLES)
+            glPopMatrix()
+
+    def create_vertex_list(self):
+        vertices = []
+        colors = []
+        for shape_data in self.shapes:
+            color = tuple(clamp(int(c * 256.0), 0, 255) for c in shape_data.color)
+            for p1, p2, p3 in shape_data.local_triangles:
+                vertices.extend(p1)
+                colors.extend(color)
+                vertices.extend(p2)
+                colors.extend(color)
+                vertices.extend(p3)
+                colors.extend(color)
+        if not vertices:
+            return None
+        return pyglet.graphics.vertex_list(len(vertices) // 2,
+                                           ('v2f', vertices),
+                                           ('c3B', colors))
+
 class ShapeData(object):
-    def __init__(self, actor, shape):
+    def __init__(self, actor, shape, color=(1.0, 1.0, 1.0)):
         assert isinstance(actor, Actor)
         assert isinstance(shape, b2Shape)
         self.actor = actor
         self.actor.shapes.add(self)
         self.shape = shape
         self.shape.userData = self
+        self.color = color
 
     def delete(self):
         if self.shape is not None:
@@ -83,6 +148,28 @@ class ShapeData(object):
         if self.actor is not None:
             self.actor.shapes.remove(self)
             self.actor = None
+
+    @property
+    def local_triangles(self):
+        if isinstance(self.shape, b2PolygonShape):
+            return get_polygon_triangles(self.shape.vertices)
+        elif isinstance(self.shape, b2CircleShape):
+            return get_circle_triangles(self.shape.localPosition.tuple(),
+                                        self.shape.radius)
+        else:
+            assert False
+
+    @property
+    def world_triangles(self):
+        if isinstance(self.shape, b2PolygonShape):
+            vertices = [self.shape.body.GetWorldPoint(v)
+                        for v in self.shape.vertices]
+            return get_polygon_triangles(vertices)
+        elif isinstance(self.shape, b2CircleShape):
+            center = self.shape.body.GetWorldPoint(self.shape.localPosition)
+            return get_circle_triangles(center, self.shape.radius)
+        else:
+            assert False
 
 class JointData(object):
     def __init__(self, actor, joint):
@@ -146,7 +233,8 @@ class Actor(object):
 
     def create_circle_shape(self, body_data, local_position=(0.0, 0.0),
                             radius=1.0, density=0.0, friction=0.2,
-                            restitution=0.0, group_index=0, sensor=False):
+                            restitution=0.0, group_index=0, sensor=False,
+                            color=(1.0, 1.0, 1.0)):
         assert isinstance(body_data, BodyData)
         assert body_data.body is not None
         assert body_data.actor is self
@@ -158,13 +246,13 @@ class Actor(object):
         shape_def.restitution = restitution
         shape_def.filter.groupIndex = group_index
         shape_def.isSensor = sensor
-        shape = body_data.body.CreateShape(shape_def)
+        shape = body_data.body.CreateShape(shape_def).asCircle()
         body_data.body.SetMassFromShapes()
-        return ShapeData(self, shape)
+        return ShapeData(self, shape, color=color)
 
     def create_polygon_shape(self, body_data, vertices=None, density=0.0,
                              friction=0.2, restitution=0.0, group_index=0,
-                             sensor=False):
+                             sensor=False, color=(1.0, 1.0, 1.0)):
         assert isinstance(body_data, BodyData)
         assert body_data.body is not None
         assert body_data.actor is self
@@ -177,9 +265,9 @@ class Actor(object):
         shape_def.restitution = restitution
         shape_def.filter.groupIndex = group_index
         shape_def.isSensor = sensor
-        shape = body_data.body.CreateShape(shape_def)
+        shape = body_data.body.CreateShape(shape_def).asPolygon()
         body_data.body.SetMassFromShapes()
-        return ShapeData(self, shape)
+        return ShapeData(self, shape, color=color)
 
     def create_revolute_joint(self, body_data_1, body_data_2, anchor,
                               motor_speed=0.0, max_motor_torque=0.0):
@@ -199,7 +287,8 @@ class Actor(object):
         return JointData(self, joint)
 
     def draw(self):
-        pass
+        for body_data in self.bodies:
+            body_data.draw()
 
     def on_key_press(self, key, modifiers):
         pass
@@ -220,8 +309,8 @@ class WaterActor(Actor):
         with self.game_engine.water_shader as shader:
             shader.uniformf('time', self.game_engine.time)
             shader.uniformf('surface_y', self.surface_y)
-            shader.uniformf('wave_height', 0.2)
-            shader.uniformf('wave_length', 1.0)
+            shader.uniformf('wave_height', 0.3)
+            shader.uniformf('wave_length', 2.0)
             shader.uniformf('wave_speed', 0.15)
             glColor3f(*self.color)
             glBegin(GL_POLYGON)
@@ -255,15 +344,15 @@ class TestVehicleActor(Actor):
         position = b2Vec2(position[0], position[1])
         self.frame_data = self.create_body(position=position)
         self.create_polygon_shape(self.frame_data, vertices=get_box_vertices(1.0, 0.5),
-                              density=1000.0, group_index=-self.group_index)
+                              density=1000.0, group_index=-self.group_index, color=(1.0, 0.0, 0.0))
         self.left_wheel_data = self.create_body(position=(position + b2Vec2(-0.7, -0.4)))
-        self.create_circle_shape(self.left_wheel_data, radius=0.5, density=100.0, friction=5.0,
-                                 group_index=-self.group_index)
+        self.create_circle_shape(self.left_wheel_data, radius=0.4, density=100.0, friction=5.0,
+                                 group_index=-self.group_index, color=(0.5, 0.5, 0.5))
         self.left_joint_data = self.create_revolute_joint(self.frame_data, self.left_wheel_data,
                                                           self.left_wheel_data.body.GetWorldCenter(), motor_speed=-20.0, max_motor_torque=10000.0)
         self.right_wheel_data = self.create_body(position=(position + b2Vec2(0.7, -0.4)))
-        self.create_circle_shape(self.right_wheel_data, radius=0.5, density=100.0, friction=5.0,
-                                 group_index=-self.group_index)
+        self.create_circle_shape(self.right_wheel_data, radius=0.4, density=100.0, friction=5.0,
+                                 group_index=-self.group_index, color=(0.5, 0.5, 0.5))
         self.right_joint_data = self.create_revolute_joint(self.frame_data, self.right_wheel_data,
                                                       self.right_wheel_data.body.GetWorldCenter(), motor_speed=20.0, max_motor_torque=10000.0)
         self.controller = TestVehicleController(self.game_engine, self)
@@ -319,7 +408,7 @@ class GameEngine(object):
         self._next_group_index = 1
         self._init_world()
         self.player_actor = None
-        self.debug_draw = MyDebugDraw()
+        self.debug_draw = None # MyDebugDraw()
         self.world.SetDebugDraw(self.debug_draw)
         self.destruction_listener = MyDestructionListener()
         self.world.SetDestructionListener(self.destruction_listener)        
@@ -330,6 +419,8 @@ class GameEngine(object):
         self.water_shader = MyShader(frag=[water_frag])
         self.camera_actor = CameraActor(self)
         self._init_test_actors()
+        self.background_image = pyglet.resource.image('cave.jpg')
+        # self.lighting_image = pyglet.resource.image('cave-lighting.png')
 
     def delete(self):
         for actor in list(self.actors):
@@ -354,6 +445,7 @@ class GameEngine(object):
     def _init_test_actors(self):
         TestPlatformActor(self, angle=-0.2)
         TestPlatformActor(self, position=(9.0, -2.0), angle=0.1)
+        WaterActor(self, vertices=get_box_vertices(half_width=10.0))
         self.player_actor = TestVehicleActor(self, position=(-3.0, 3.0))
 
     def step(self, dt):
@@ -372,11 +464,14 @@ class GameEngine(object):
                 controller.step(dt)
 
     def draw(self, width, height):
+        self.background_image.blit(0, 0)
         if self.player_actor is not None:
             self.camera_actor.position = self.player_actor.first_body_position
         with self.camera_actor.transform(width, height):
+            glPushAttrib(GL_ALL_ATTRIB_BITS)
             for actor in self.actors:
                 actor.draw()
+            glPopAttrib()
             if self.debug_draw is not None:
                 self.debug_draw.draw()
 
@@ -526,6 +621,8 @@ class MyShader(shader.Shader):
 class MyWindow(pyglet.window.Window):
     def __init__(self, **kwargs):
         super(MyWindow, self).__init__(**kwargs)
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         self.time = 0.0
         self.dt = 1.0 / 60.0
         self.game_engine = GameEngine()
@@ -559,7 +656,7 @@ class MyWindow(pyglet.window.Window):
 def main():
     config = pyglet.gl.Config(double_buffer=True, sample_buffers=1, samples=4,
                               depth_size=8)
-    window = MyWindow(config=config)
+    window = MyWindow(fullscreen=True, config=config)
     pyglet.app.run()
 
 if __name__ == '__main__':
