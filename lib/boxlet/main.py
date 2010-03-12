@@ -9,6 +9,12 @@ import shader
 def clamp(x, min_x, max_x):
     return min(max(x, min_x), max_x)
 
+def float_to_ubyte(f):
+    return clamp(int(f * 256.0), 0, 255)
+
+def float_to_byte(f):
+    return clamp(int(math.floor(f * 128.0)), -128, 127)
+
 def get_box_vertices(half_width=1.0, half_height=1.0):
     return [(-half_width, -half_height), (half_width, -half_height),
             (half_width, half_height), (-half_width, half_height)]
@@ -152,7 +158,7 @@ class BodyData(object):
         normals = []
         colors = []
         for shape_data in self.shapes:
-            color = tuple(clamp(int(c * 256.0), 0, 255) for c in shape_data.color)
+            color = tuple(float_to_ubyte(f) for f in shape_data.color)
             for p1, p2, p3 in shape_data.local_triangles:
                 if shape_data.shading == 'flat':
                     n1 = n2 = n3 = 0.0, 0.0, 1.0
@@ -165,20 +171,14 @@ class BodyData(object):
                     n2 = n3 = get_face_normal(p1, p2, p3)
                 else:
                     assert False
-                vertices.extend(p1)
-                normals.extend(n1)
-                colors.extend(color)
-                vertices.extend(p2)
-                normals.extend(n2)
-                colors.extend(color)
-                vertices.extend(p3)
-                normals.extend(n3)
-                colors.extend(color)
+                vertices.extend(p1 + p2 + p3)
+                normals.extend(float_to_byte(f) for f in n1 + n2 + n3)
+                colors.extend(color * 3)
         if not vertices:
             return None
         return pyglet.graphics.vertex_list(len(vertices) // 2,
                                            ('v2f', vertices),
-                                           ('n3f', normals),
+                                           ('n3b', normals),
                                            ('c3B', colors))
 
 class ShapeData(object):
