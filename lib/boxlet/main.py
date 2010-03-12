@@ -1,5 +1,6 @@
 from Box2D import *
 import contextlib
+from ctypes import c_float
 import math
 import pyglet
 from pyglet.gl import *
@@ -12,7 +13,7 @@ def get_box_vertices(half_width=1.0, half_height=1.0):
     return [(-half_width, -half_height), (half_width, -half_height),
             (half_width, half_height), (-half_width, half_height)]
 
-def get_circle_vertices(center=(0.0, 0.0), radius=1.0, angle=0.0, count=16):
+def get_circle_vertices(center=(0.0, 0.0), radius=1.0, angle=0.0, count=8):
     vertices = []
     x, y = center
     for i in xrange(count):
@@ -21,8 +22,8 @@ def get_circle_vertices(center=(0.0, 0.0), radius=1.0, angle=0.0, count=16):
         vertices.append(vertex)
     return vertices
 
-def get_circle_triangles(center=(0.0, 0.0), radius=1.0, count=16):
-    vertices = get_circle_vertices(center, radius, count)
+def get_circle_triangles(center=(0.0, 0.0), radius=1.0, angle=0.0, count=8):
+    vertices = get_circle_vertices(center, radius, angle, count)
     triangles = []
     for i in xrange(count):
         j = (i + 1) % count
@@ -31,13 +32,47 @@ def get_circle_triangles(center=(0.0, 0.0), radius=1.0, count=16):
     return triangles
 
 def get_polygon_triangles(vertices):
-    centroid = vertices[0]
+    centroid = get_polygon_centroid(vertices)
     triangles = []
     for i in xrange(len(vertices)):
         j = (i + 1) % len(vertices)
         triangle = centroid, vertices[i], vertices[j]
         triangles.append(triangle)
     return triangles
+
+# TODO: calculate actual centroid
+def get_polygon_centroid(vertices):
+    total_x = sum(x for x, y in vertices)
+    total_y = sum(y for x, y in vertices)
+    return total_x / float(len(vertices)), total_y / float(len(vertices))
+
+def get_vertex_normals(p1, p2, p3):
+    x1, y1 = p1
+    x2, y2 = p2
+    x3, y3 = p3
+    n1 = 0.0, 0.0, 1.0
+    n2 = normalize((x2 - x1, y2 - y1, 0.0))
+    n3 = normalize((x3 - x1, y3 - y1, 0.0))
+    return [n1, n2, n3]
+
+def get_face_normal(p1, p2, p3):
+    x1, y1 = p1
+    x2, y2 = p2
+    x3, y3 = p3
+    x = (x2 + x3) / 2.0
+    y = (y2 + y3) / 2.0
+    nx, ny = x - x1, y - y1
+    nz = abs((nx + ny) / 2.0)
+    return normalize((nx, ny, nz))
+
+def normalize(v):
+    x, y, z = v
+    if x or y or z:
+        length = math.sqrt(x * x + y * y + z * z)
+        assert length
+        return x / length, y / length, z / length
+    else:
+        return 0.0, 0.0, 0.0
 
 class Controller(object):
     def __init__(self, game_engine):
@@ -114,24 +149,40 @@ class BodyData(object):
 
     def create_vertex_list(self):
         vertices = []
+        normals = []
         colors = []
         for shape_data in self.shapes:
             color = tuple(clamp(int(c * 256.0), 0, 255) for c in shape_data.color)
             for p1, p2, p3 in shape_data.local_triangles:
+                if shape_data.shading == 'flat':
+                    n1 = n2 = n3 = 0.0, 0.0, 1.0
+                elif shape_data.shading == 'vertex':
+                    n1, n2, n3 = get_vertex_normals(p1, p2, p3)
+                elif shape_data.shading == 'face':
+                    n1 = n2 = n3 = get_face_normal(p1, p2, p3)
+                elif shape_data.shading == 'edge':
+                    n1 = 0.0, 0.0, 1.0
+                    n2 = n3 = get_face_normal(p1, p2, p3)
+                else:
+                    assert False
                 vertices.extend(p1)
+                normals.extend(n1)
                 colors.extend(color)
                 vertices.extend(p2)
+                normals.extend(n2)
                 colors.extend(color)
                 vertices.extend(p3)
+                normals.extend(n3)
                 colors.extend(color)
         if not vertices:
             return None
         return pyglet.graphics.vertex_list(len(vertices) // 2,
                                            ('v2f', vertices),
+                                           ('n3f', normals),
                                            ('c3B', colors))
 
 class ShapeData(object):
-    def __init__(self, actor, shape, color=(1.0, 1.0, 1.0)):
+    def __init__(self, actor, shape, color=(1.0, 1.0, 1.0), shading='vertex'):
         assert isinstance(actor, Actor)
         assert isinstance(shape, b2Shape)
         self.actor = actor
@@ -139,6 +190,7 @@ class ShapeData(object):
         self.shape = shape
         self.shape.userData = self
         self.color = color
+        self.shading = shading
 
     def delete(self):
         if self.shape is not None:
@@ -234,7 +286,7 @@ class Actor(object):
     def create_circle_shape(self, body_data, local_position=(0.0, 0.0),
                             radius=1.0, density=0.0, friction=0.2,
                             restitution=0.0, group_index=0, sensor=False,
-                            color=(1.0, 1.0, 1.0)):
+                            color=(1.0, 1.0, 1.0), shading='vertex'):
         assert isinstance(body_data, BodyData)
         assert body_data.body is not None
         assert body_data.actor is self
@@ -248,11 +300,11 @@ class Actor(object):
         shape_def.isSensor = sensor
         shape = body_data.body.CreateShape(shape_def).asCircle()
         body_data.body.SetMassFromShapes()
-        return ShapeData(self, shape, color=color)
+        return ShapeData(self, shape, color=color, shading=shading)
 
     def create_polygon_shape(self, body_data, vertices=None, density=0.0,
                              friction=0.2, restitution=0.0, group_index=0,
-                             sensor=False, color=(1.0, 1.0, 1.0)):
+                             sensor=False, color=(1.0, 1.0, 1.0), shading='vertex'):
         assert isinstance(body_data, BodyData)
         assert body_data.body is not None
         assert body_data.actor is self
@@ -267,7 +319,7 @@ class Actor(object):
         shape_def.isSensor = sensor
         shape = body_data.body.CreateShape(shape_def).asPolygon()
         body_data.body.SetMassFromShapes()
-        return ShapeData(self, shape, color=color)
+        return ShapeData(self, shape, color=color, shading=shading)
 
     def create_revolute_joint(self, body_data_1, body_data_2, anchor,
                               motor_speed=0.0, max_motor_torque=0.0):
@@ -347,14 +399,16 @@ class TestVehicleActor(Actor):
                               density=1000.0, group_index=-self.group_index, color=(1.0, 0.0, 0.0))
         self.left_wheel_data = self.create_body(position=(position + b2Vec2(-0.7, -0.4)))
         self.create_circle_shape(self.left_wheel_data, radius=0.4, density=100.0, friction=5.0,
-                                 group_index=-self.group_index, color=(0.5, 0.5, 0.5))
+                                 group_index=-self.group_index, color=(0.5, 0.5, 0.5), shading='edge')
         self.left_joint_data = self.create_revolute_joint(self.frame_data, self.left_wheel_data,
-                                                          self.left_wheel_data.body.GetWorldCenter(), motor_speed=-20.0, max_motor_torque=10000.0)
+                                                          self.left_wheel_data.body.GetWorldCenter(),
+                                                          motor_speed=-20.0, max_motor_torque=10000.0)
         self.right_wheel_data = self.create_body(position=(position + b2Vec2(0.7, -0.4)))
         self.create_circle_shape(self.right_wheel_data, radius=0.4, density=100.0, friction=5.0,
-                                 group_index=-self.group_index, color=(0.5, 0.5, 0.5))
+                                 group_index=-self.group_index, color=(0.5, 0.5, 0.5), shading='edge')
         self.right_joint_data = self.create_revolute_joint(self.frame_data, self.right_wheel_data,
-                                                      self.right_wheel_data.body.GetWorldCenter(), motor_speed=20.0, max_motor_torque=10000.0)
+                                                      self.right_wheel_data.body.GetWorldCenter(),
+                                                      motor_speed=20.0, max_motor_torque=10000.0)
         self.controller = TestVehicleController(self.game_engine, self)
 
     def delete(self):
@@ -469,6 +523,22 @@ class GameEngine(object):
             self.camera_actor.position = self.player_actor.first_body_position
         with self.camera_actor.transform(width, height):
             glPushAttrib(GL_ALL_ATTRIB_BITS)
+            glEnable(GL_LIGHTING)
+            glEnable(GL_NORMALIZE)
+            glEnable(GL_LIGHT0)
+            glLightfv(GL_LIGHT0, GL_DIFFUSE, (c_float * 4)(1.0, 1.0, 1.0, 1.0))
+            glLightfv(GL_LIGHT0, GL_POSITION, (c_float * 4)(-1.0, 1.0, 1.0, 0.0))
+            glEnable(GL_LIGHT1)
+            glLightfv(GL_LIGHT1, GL_DIFFUSE, (c_float * 4)(0.5, 0.5, 0.5, 1.0))
+            glLightfv(GL_LIGHT1, GL_POSITION, (c_float * 4)(1.0, 1.0, 1.0, 0.0))
+            glEnable(GL_LIGHT2)
+            glLightfv(GL_LIGHT2, GL_DIFFUSE, (c_float * 4)(0.1, 0.1, 0.1, 1.0))
+            glLightfv(GL_LIGHT2, GL_POSITION, (c_float * 4)(1.0, -1.0, 1.0, 0.0))
+            glEnable(GL_LIGHT3)
+            glLightfv(GL_LIGHT3, GL_DIFFUSE, (c_float * 4)(0.2, 0.2, 0.2, 1.0))
+            glLightfv(GL_LIGHT3, GL_POSITION, (c_float * 4)(-1.0, -1.0, 1.0, 0.0))
+            glEnable(GL_COLOR_MATERIAL)
+            glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
             for actor in self.actors:
                 actor.draw()
             glPopAttrib()
@@ -635,7 +705,7 @@ class MyWindow(pyglet.window.Window):
         super(MyWindow, self).close()
 
     def on_draw(self):
-        self.clear()
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         self.game_engine.draw(self.width, self.height)
         self.clock_display.draw()
 
