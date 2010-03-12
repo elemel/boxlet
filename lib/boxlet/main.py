@@ -415,11 +415,11 @@ class GameEngine(object):
         self.scheduler = Scheduler()
         self.actors = set()
         self.controllers = set()
-        water_frag = pyglet.resource.file('water.frag').read()
+        water_frag = pyglet.resource.file('resources/shaders/water.frag').read()
         self.water_shader = MyShader(frag=[water_frag])
         self.camera_actor = CameraActor(self)
         self._init_test_actors()
-        self.background_image = pyglet.resource.image('cave.jpg')
+        self.background_image = pyglet.resource.image('resources/images/cave.jpg')
         # self.lighting_image = pyglet.resource.image('cave-lighting.png')
 
     def delete(self):
