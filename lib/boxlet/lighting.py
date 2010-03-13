@@ -35,7 +35,7 @@ class LightingManager(object):
     def free(self, light_name):
         self._free.append(light_name)
 
-class Light(object):
+class LightImpl(object):
     def __init__(self, lighting_manager, ambient=(0.0, 0.0, 0.0, 1.0),
                  diffuse=(0.0, 0.0, 0.0, 1.0), specular=(0.0, 0.0, 0.0, 1.0),
                  position=(0.0, 0.0, 1.0, 0.0), enabled=True):
@@ -100,30 +100,30 @@ class Light(object):
     def position(self, position):
         glLightfv(self._light_name, GL_POSITION, (c_float * 4)(*position))
 
-class LightWrapper(object):
-    def __init__(self, light):
-        assert isinstance(light, Light)
-        self._light = light
+class Light(object):
+    def __init__(self, impl):
+        assert isinstance(impl, LightImpl)
+        self._impl = impl
 
     def delete(self):
-        if self._light is not None:
-            self._light.delete()
-            self._light = None
+        if self._impl is not None:
+            self._impl.delete()
+            self._impl = None
 
     @property
     def enabled(self):
-        return self._light.enabled
+        return self._impl.enabled
 
     @enabled.setter
     def enabled(self, enabled):
-        self._light.enabled = enabled
+        self._impl.enabled = enabled
 
-class DirectionalLight(LightWrapper):
+class DirectionalLight(Light):
     def __init__(self, lighting_manager, color=(1.0, 1.0, 1.0),
                  direction=(0.0, 0.0, -1.0), enabled=True):
         assert isinstance(lighting_manager, LightingManager)
         diffuse = specular = color + (1.0,)
         position = (-direction[0], -direction[1], -direction[2])
-        light = Light(lighting_manager, diffuse=diffuse,
-                      specular=specular, position=position, enabled=enabled)
-        super(DirectionalLight, self).__init__(light)
+        impl = LightImpl(lighting_manager, diffuse=diffuse,
+                         specular=specular, position=position, enabled=enabled)
+        super(DirectionalLight, self).__init__(impl)
