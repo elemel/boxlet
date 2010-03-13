@@ -2,7 +2,7 @@ from pyglet.gl import *
 
 class LightingManager(object):
     def __init__(self, count=8, enabled=False):
-        self._alloc = iter(xrange(GL_LIGHT0, GL_LIGHT0 + count)).next
+        self._alloc = iter(xrange(GL_LIGHT0, GL_LIGHT0 + count))
         self._free = []
         self._enabled = False
         self.enabled = enabled
@@ -30,7 +30,7 @@ class LightingManager(object):
         if self._free:
             return self._free.pop()
         else:
-            return self._alloc()
+            return self._alloc.next()
 
     def free(self, light_name):
         self._free.append(light_name)
