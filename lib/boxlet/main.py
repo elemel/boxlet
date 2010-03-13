@@ -413,21 +413,21 @@ class TestVehicleActor(Actor):
         if key == pyglet.window.key.RIGHT:
             self.left_joint_data.joint.enableMotor = False
 
-# TODO: Extract class Camera. The CameraActor should hold a camera instance.
-class CameraActor(Actor):
-    def __init__(self, game_engine):
-        super(CameraActor, self).__init__(game_engine)
-        self.scale = 50.0
-        self.position = 0.0, 0.0
+class Camera(object):
+    def __init__(self, resolution=(1, 1), position=(0.0, 0.0), scale=50.0):
+        self.resolution = resolution
+        self.position = position
+        self.scale = scale
 
-    @contextlib.contextmanager
-    def transform(self, width, height):
+    def __enter__(self):
         glPushMatrix()
+        width, height = self.resolution
         glTranslatef(float(width // 2), float(height // 2), 0.0)
         glScalef(self.scale, self.scale, self.scale)
         x, y = self.position
         glTranslatef(-x, -y, 0.0)
-        yield None
+
+    def __exit__(self, *args):
         glPopMatrix()
 
 class MyDestructionListener(b2DestructionListener):
@@ -453,7 +453,7 @@ class GameEngine(object):
         self.controllers = set()
         water_frag = pyglet.resource.file('resources/shaders/water.frag').read()
         self.water_shader = MyShader(frag=[water_frag])
-        self.camera_actor = CameraActor(self)
+        self.camera = Camera()
         self._init_test_actors()
         self.background_image = pyglet.resource.image('resources/images/cave.jpg')
         self.background_image.anchor_x = self.background_image.width // 2
@@ -517,9 +517,10 @@ class GameEngine(object):
 
     def draw(self, width, height):
         self.background_image.blit(width // 2, height // 2)
+        self.camera.resolution = width, height
         if self.player_actor is not None:
-            self.camera_actor.position = self.player_actor.first_body_position
-        with self.camera_actor.transform(width, height):
+            self.camera.position = self.player_actor.first_body_position
+        with self.camera:
             glPushAttrib(GL_ALL_ATTRIB_BITS)
             with self.lighting_manager:
                 for actor in self.actors:
