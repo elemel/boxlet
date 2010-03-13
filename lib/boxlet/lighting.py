@@ -2,7 +2,8 @@ from pyglet.gl import *
 
 class LightingManager(object):
     def __init__(self, count=8, enabled=False):
-        self._free_light_names = range(GL_LIGHT0, GL_LIGHT0 + count)
+        self._alloc = iter(xrange(GL_LIGHT0, GL_LIGHT0 + count)).next
+        self._free = []
         self._enabled = False
         self.enabled = enabled
 
@@ -25,13 +26,22 @@ class LightingManager(object):
     def __exit__(self, *args):
         self.enabled = False
 
+    def alloc(self):
+        if self._free:
+            return self._free.pop()
+        else:
+            return self._alloc()
+
+    def free(self, light_name):
+        self._free.append(light_name)
+
 class Light(object):
     def __init__(self, lighting_manager, ambient=(0.0, 0.0, 0.0, 1.0),
                  diffuse=(0.0, 0.0, 0.0, 1.0), specular=(0.0, 0.0, 0.0, 1.0),
                  position=(0.0, 0.0, 1.0, 0.0), enabled=True):
         assert isinstance(lighting_manager, LightingManager)
         self._lighting_manager = lighting_manager
-        self._light_name = self._lighting_manager._free_light_names.pop()
+        self._light_name = self._lighting_manager.alloc()
         self._enabled = False
         self.ambient = ambient
         self.diffuse = diffuse
@@ -42,7 +52,7 @@ class Light(object):
     def delete(self):
         if self._lighting_manager is not None:
             self.enabled = False
-            self._lighting_manager._free_light_names.append(self._light_name)
+            self._lighting_manager.free(self._light_name)
             self._lighting_manager = None
 
     @property
