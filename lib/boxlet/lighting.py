@@ -41,7 +41,7 @@ class Light(object):
 
     def delete(self):
         if self._lighting_manager is not None:
-            glDisable(self._light_name)
+            self.enabled = False
             self._lighting_manager._free_light_names.append(self._light_name)
             self._lighting_manager = None
 
@@ -90,16 +90,30 @@ class Light(object):
     def position(self, position):
         glLightfv(self._light_name, GL_POSITION, (c_float * 4)(*position))
 
-class DirectionalLight(object):
-    def __init__(self, lighting_manager, color=(1.0, 1.0, 1.0),
-                 direction=(0.0, 0.0, -1.0)):
-        assert isinstance(lighting_manager, LightingManager)
-        diffuse = specular = color + (1.0,)
-        position = (-direction[0], -direction[1], -direction[2])
-        self._light = Light(lighting_manager, diffuse=diffuse,
-                            specular=specular, position=position)
+class LightWrapper(object):
+    def __init__(self, light):
+        assert isinstance(light, Light)
+        self._light = light
 
     def delete(self):
         if self._light is not None:
             self._light.delete()
             self._light = None
+
+    @property
+    def enabled(self):
+        return self._light.enabled
+
+    @enabled.setter
+    def enabled(self, enabled):
+        self._light.enabled = enabled
+
+class DirectionalLight(LightWrapper):
+    def __init__(self, lighting_manager, color=(1.0, 1.0, 1.0),
+                 direction=(0.0, 0.0, -1.0), enabled=True):
+        assert isinstance(lighting_manager, LightingManager)
+        diffuse = specular = color + (1.0,)
+        position = (-direction[0], -direction[1], -direction[2])
+        light = Light(lighting_manager, diffuse=diffuse,
+                      specular=specular, position=position, enabled=enabled)
+        super(DirectionalLight, self).__init__(light)
