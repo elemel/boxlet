@@ -411,6 +411,7 @@ class TestVehicleActor(Actor):
         if key == pyglet.window.key.RIGHT:
             self.left_joint_data.joint.enableMotor = False
 
+# TODO: Extract class Camera. The CameraActor should hold a camera instance.
 class CameraActor(Actor):
     def __init__(self, game_engine):
         super(CameraActor, self).__init__(game_engine)
@@ -434,10 +435,92 @@ class MyDestructionListener(b2DestructionListener):
     def SayGoodbye(self, shape_or_joint):
         assert False
 
+class LightingManager(object):
+    def __init__(self, count=8):
+        self._free_light_names = range(GL_LIGHT0, GL_LIGHT0 + count)
+
+    def enable(self):
+        glEnable(GL_LIGHTING)
+
+    def disable(self):
+        glDisable(GL_LIGHTING)
+
+    def __enter__(self):
+        self.enable()
+
+    def __exit__(self, *args):
+        self.disable()
+
+class Light(object):
+    def __init__(self, lighting_manager, ambient=(0.0, 0.0, 0.0, 1.0),
+                 diffuse=(0.0, 0.0, 0.0, 1.0), specular=(0.0, 0.0, 0.0, 1.0),
+                 position=(0.0, 0.0, 1.0, 0.0)):
+        assert isinstance(lighting_manager, LightingManager)
+        self._lighting_manager = lighting_manager
+        self._light_name = self._lighting_manager._free_light_names.pop()
+        glEnable(self._light_name)
+        self.ambient = ambient
+        self.diffuse = diffuse
+        self.specular = specular
+        self.position = position
+
+    def delete(self):
+        if self._lighting_manager is not None:
+            glDisable(self._light_name)
+            self._lighting_manager._free_light_names.append(self._light_name)
+            self._lighting_manager = None
+
+    @property
+    def ambient(self):
+        raise NotImplementedError()
+
+    @ambient.setter
+    def ambient(self, ambient):
+        glLightfv(self._light_name, GL_AMBIENT, (c_float * 4)(*ambient))
+
+    @property
+    def diffuse(self):
+        raise NotImplementedError()
+
+    @diffuse.setter
+    def diffuse(self, diffuse):
+        glLightfv(self._light_name, GL_DIFFUSE, (c_float * 4)(*diffuse))
+
+    @property
+    def specular(self):
+        raise NotImplementedError()
+
+    @specular.setter
+    def specular(self, specular):
+        glLightfv(self._light_name, GL_SPECULAR, (c_float * 4)(*specular))
+
+    @property
+    def position(self):
+        raise NotImplementedError()
+
+    @position.setter
+    def position(self, position):
+        glLightfv(self._light_name, GL_POSITION, (c_float * 4)(*position))
+
+class DirectionalLight(object):
+    def __init__(self, lighting_manager, color=(1.0, 1.0, 1.0),
+                 direction=(0.0, 0.0, -1.0)):
+        assert isinstance(lighting_manager, LightingManager)
+        diffuse = specular = color + (1.0,)
+        position = (-direction[0], -direction[1], -direction[2])
+        self._light = Light(lighting_manager, diffuse=diffuse,
+                            specular=specular, position=position)
+
+    def delete(self):
+        if self._light is not None:
+            self._light.delete()
+            self._light = None
+
 class GameEngine(object):
     def __init__(self):
         self.time = 0.0
         self._next_group_index = 1
+        self._init_lighting()
         self._init_world()
         self.player_actor = None
         self.debug_draw = None # MyDebugDraw()
@@ -468,6 +551,20 @@ class GameEngine(object):
         group_index = self._next_group_index
         self._next_group_index += 1
         return group_index
+
+    def _init_lighting(self):
+        glEnable(GL_NORMALIZE)
+        glEnable(GL_COLOR_MATERIAL)
+        glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
+        self.lighting_manager = LightingManager()
+        DirectionalLight(self.lighting_manager, color=(1.0, 1.0, 1.0),
+                         direction=(1.0, -1.0, -1.0))
+        DirectionalLight(self.lighting_manager, color=(0.5, 0.5, 0.5),
+                         direction=(-1.0, -1.0, -1.0))
+        DirectionalLight(self.lighting_manager, color=(0.1, 0.1, 0.1),
+                         direction=(-1.0, 1.0, -1.0))
+        DirectionalLight(self.lighting_manager, color=(0.2, 0.2, 0.2),
+                         direction=(1.0, 1.0, -1.0))
 
     def _init_world(self):
         aabb = b2AABB()
@@ -503,24 +600,9 @@ class GameEngine(object):
             self.camera_actor.position = self.player_actor.first_body_position
         with self.camera_actor.transform(width, height):
             glPushAttrib(GL_ALL_ATTRIB_BITS)
-            glEnable(GL_LIGHTING)
-            glEnable(GL_NORMALIZE)
-            glEnable(GL_LIGHT0)
-            glLightfv(GL_LIGHT0, GL_DIFFUSE, (c_float * 4)(1.0, 1.0, 1.0, 1.0))
-            glLightfv(GL_LIGHT0, GL_POSITION, (c_float * 4)(-1.0, 1.0, 1.0, 0.0))
-            glEnable(GL_LIGHT1)
-            glLightfv(GL_LIGHT1, GL_DIFFUSE, (c_float * 4)(0.5, 0.5, 0.5, 1.0))
-            glLightfv(GL_LIGHT1, GL_POSITION, (c_float * 4)(1.0, 1.0, 1.0, 0.0))
-            glEnable(GL_LIGHT2)
-            glLightfv(GL_LIGHT2, GL_DIFFUSE, (c_float * 4)(0.1, 0.1, 0.1, 1.0))
-            glLightfv(GL_LIGHT2, GL_POSITION, (c_float * 4)(1.0, -1.0, 1.0, 0.0))
-            glEnable(GL_LIGHT3)
-            glLightfv(GL_LIGHT3, GL_DIFFUSE, (c_float * 4)(0.2, 0.2, 0.2, 1.0))
-            glLightfv(GL_LIGHT3, GL_POSITION, (c_float * 4)(-1.0, -1.0, 1.0, 0.0))
-            glEnable(GL_COLOR_MATERIAL)
-            glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
-            for actor in self.actors:
-                actor.draw()
+            with self.lighting_manager:
+                for actor in self.actors:
+                    actor.draw()
             glPopAttrib()
             if self.debug_draw is not None:
                 self.debug_draw.draw()
