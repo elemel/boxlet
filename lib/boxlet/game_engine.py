@@ -10,6 +10,7 @@ from ctypes import c_float
 import math
 import pyglet
 from pyglet.gl import *
+import random
 import shader
 
 class Camera(object):
@@ -158,7 +159,9 @@ class GameEngine(object):
             light.color = light_r, light_g, light_b
             
     def on_key_press(self, key, modifiers):
-        if self.player_actor is not None:
+        if key == pyglet.window.key.C:
+            self.background_color = tuple(random.uniform(0.5, 1.0) for _ in xrange(3))
+        elif self.player_actor is not None:
             self.player_actor.on_key_press(key, modifiers)
 
     def on_key_release(self, key, modifiers):

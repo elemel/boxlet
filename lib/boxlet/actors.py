@@ -150,7 +150,7 @@ class TestVehicleActor(Actor):
         super(TestVehicleActor, self).__init__(game_engine)
         position = b2Vec2(position[0], position[1])
         self.frame_data = self.create_body(position=position)
-        self.create_polygon_shape(self.frame_data, vertices=get_box_vertices(1.0, 0.5),
+        self.create_polygon_shape(self.frame_data, vertices=[(-1.0, -0.5), (1.0, -0.5), (0.5, 0.7), (-0.5, 0.7)],
                               density=1000.0, group_index=-self.group_index, color=(1.0, 1.0, 1.0))
         self.left_wheel_data = self.create_body(position=(position + b2Vec2(-0.7, -0.4)))
         self.create_circle_shape(self.left_wheel_data, radius=0.4, density=100.0, friction=5.0,
