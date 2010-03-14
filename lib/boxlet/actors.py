@@ -117,13 +117,15 @@ class Actor(object):
         pass
 
 class WaterActor(Actor):
-    def __init__(self, game_engine, vertices=None, color=(0.0, 0.5, 1.0)):
+    def __init__(self, game_engine, vertices=None, color=(0.0, 1.0, 2.0),
+                 opacity=0.5):
         super(WaterActor, self).__init__(game_engine)
         body_data = self.create_body()
         shape_data = self.create_polygon_shape(body_data, vertices, sensor=True)
         self.surface_y = body_data.body.position.y
         self.vertices = shape_data.shape.asPolygon().vertices
         self.color = color
+        self.opacity = opacity
 
     def draw(self):
         with self.game_engine.water_shader as shader:
@@ -132,7 +134,8 @@ class WaterActor(Actor):
             shader.uniformf('wave_height', 0.3)
             shader.uniformf('wave_length', 2.0)
             shader.uniformf('wave_speed', 0.5)
-            glColor3f(*self.color)
+            r, g, b = self.color
+            glColor4f(r, g, b, self.opacity)
             glBegin(GL_POLYGON)
             for x, y in self.vertices:
                 glTexCoord2f(x, y)
