@@ -17,6 +17,10 @@ def float_to_ubyte(f):
 def float_to_byte(f):
     return clamp(int(math.floor(f * 128.0)), -128, 127)
 
+def char_to_float(c):
+    assert isinstance(c, str) and len(c) == 1
+    return float(ord(c)) / 255.0
+
 def get_box_vertices(half_width=1.0, half_height=1.0):
     return [(-half_width, -half_height), (half_width, -half_height),
             (half_width, half_height), (-half_width, half_height)]
@@ -81,6 +85,14 @@ def normalize(v):
         return x / length, y / length, z / length
     else:
         return 0.0, 0.0, 0.0
+
+# TODO: linear interpolation for float coordinates
+def sample_image(image_data, x, y):
+    assert isinstance(image_data, pyglet.image.ImageData)
+    assert image_data.format in ('RGB', 'RGBA')
+    i = int(y) * image_data.pitch + int(x) * len(image_data.format)
+    pixel = image_data.data[i:i + len(image_data.format)]
+    return tuple(map(char_to_float, pixel))
 
 class Controller(object):
     def __init__(self, game_engine):
@@ -174,7 +186,7 @@ class BodyData(object):
                 else:
                     assert False
                 vertices.extend(p1 + p2 + p3)
-                normals.extend(float_to_byte(f) for f in n1 + n2 + n3)
+                normals.extend(map(float_to_byte, n1 + n2 + n3))
                 colors.extend(color * 3)
         if not vertices:
             return None
@@ -385,7 +397,7 @@ class TestVehicleActor(Actor):
         position = b2Vec2(position[0], position[1])
         self.frame_data = self.create_body(position=position)
         self.create_polygon_shape(self.frame_data, vertices=get_box_vertices(1.0, 0.5),
-                              density=1000.0, group_index=-self.group_index, color=(1.0, 0.0, 0.0))
+                              density=1000.0, group_index=-self.group_index, color=(1.0, 1.0, 1.0))
         self.left_wheel_data = self.create_body(position=(position + b2Vec2(-0.7, -0.4)))
         self.create_circle_shape(self.left_wheel_data, radius=0.4, density=100.0, friction=5.0,
                                  group_index=-self.group_index, color=(0.5, 0.5, 0.5), shading='edge')
@@ -458,7 +470,8 @@ class GameEngine(object):
         self.background_image = pyglet.resource.image('resources/images/cave.jpg')
         self.background_image.anchor_x = self.background_image.width // 2
         self.background_image.anchor_y = self.background_image.height // 2
-        # self.lighting_image = pyglet.resource.image('cave-lighting.png')
+        self.lighting_image = pyglet.resource.image('resources/images/cave-lighting.jpg')
+        self.lighting_image_data = self.lighting_image.image_data
 
     def delete(self):
         for actor in list(self.actors):
@@ -478,14 +491,20 @@ class GameEngine(object):
         glEnable(GL_COLOR_MATERIAL)
         glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
         self.lighting_manager = LightingManager()
-        DirectionalLight(self.lighting_manager, color=(1.0, 1.0, 1.0),
-                         direction=(1.0, -1.0, -1.0))
-        DirectionalLight(self.lighting_manager, color=(0.5, 0.5, 0.5),
-                         direction=(-1.0, -1.0, -1.0))
-        DirectionalLight(self.lighting_manager, color=(0.1, 0.1, 0.1),
-                         direction=(-1.0, 1.0, -1.0))
-        DirectionalLight(self.lighting_manager, color=(0.2, 0.2, 0.2),
-                         direction=(1.0, 1.0, -1.0))
+        light_1 = DirectionalLight(self.lighting_manager,
+                                   color=(1.0, 1.0, 1.0),
+                                   direction=(1.0, -1.0, -1.0))
+        light_2 = DirectionalLight(self.lighting_manager,
+                                   color=(0.5, 0.5, 0.5),
+                                   direction=(-1.0, -1.0, -1.0))
+        light_3 = DirectionalLight(self.lighting_manager,
+                                   color=(0.1, 0.1, 0.1),
+                                   direction=(-1.0, 1.0, -1.0))
+        light_4 = DirectionalLight(self.lighting_manager,
+                                   color=(0.2, 0.2, 0.2),
+                                   direction=(1.0, 1.0, -1.0))
+        self.environment_lights = [(1.0, light_1), (0.5, light_2),
+                                   (0.1, light_3), (0.2, light_4)]
 
     def _init_world(self):
         aabb = b2AABB()
@@ -516,6 +535,7 @@ class GameEngine(object):
                 controller.step(dt)
 
     def draw(self, width, height):
+        self._update_environment_lights()
         self.background_image.blit(width // 2, height // 2)
         self.camera.resolution = width, height
         if self.player_actor is not None:
@@ -528,6 +548,14 @@ class GameEngine(object):
             glPopAttrib()
             if self.debug_draw is not None:
                 self.debug_draw.draw()
+
+    def _update_environment_lights(self):
+        for scale, light in self.environment_lights:
+            x, y, z = normalize(light.direction)
+            x = self.lighting_image_data.width // 2 - int(float(self.lighting_image_data.width // 4) * x)
+            y = self.lighting_image_data.height // 2 - int(float(self.lighting_image_data.height // 4) * y)
+            r, g, b = sample_image(self.lighting_image_data, x, y)[:3]
+            light.color = scale * r, scale * g, scale * b
 
     def on_key_press(self, key, modifiers):
         if self.player_actor is not None:
