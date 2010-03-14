@@ -45,7 +45,8 @@ class Light(object):
         self._light_name = self._lighting_manager.alloc()
         self.enabled = enabled
 
-        # No special handling of GL_LIGHT0 for the diffuse and specular term.
+        # Reset OpenGL light source parameters. No special handling of
+        # GL_LIGHT0 for the diffuse and specular term.
         glLightfv(self._light_name, GL_AMBIENT, CFloat4(0.0, 0.0, 0.0, 1.0))
         glLightfv(self._light_name, GL_DIFFUSE, CFloat4(0.0, 0.0, 0.0, 1.0))
         glLightfv(self._light_name, GL_SPECULAR, CFloat4(0.0, 0.0, 0.0, 1.0))
