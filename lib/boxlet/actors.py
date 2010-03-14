@@ -131,7 +131,7 @@ class WaterActor(Actor):
             shader.uniformf('surface_y', self.surface_y)
             shader.uniformf('wave_height', 0.3)
             shader.uniformf('wave_length', 2.0)
-            shader.uniformf('wave_speed', 0.15)
+            shader.uniformf('wave_speed', 0.5)
             glColor3f(*self.color)
             glBegin(GL_POLYGON)
             for x, y in self.vertices:
@@ -143,7 +143,7 @@ class TestPlatformActor(Actor):
     def __init__(self, game_engine, position=(0.0, 0.0), angle=0.0):
         super(TestPlatformActor, self).__init__(game_engine)
         body_data = self.create_body(position=position, angle=angle)
-        self.create_polygon_shape(body_data, vertices=get_box_vertices(5.0, 0.1))
+        self.create_polygon_shape(body_data, vertices=get_box_vertices(5.0, 0.1), color=(1.0, 0.5, 0.0))
 
 class TestVehicleActor(Actor):
     def __init__(self, game_engine, position=(0.0, 0.0)):
@@ -154,13 +154,13 @@ class TestVehicleActor(Actor):
                               density=1000.0, group_index=-self.group_index, color=(1.0, 1.0, 1.0))
         self.left_wheel_data = self.create_body(position=(position + b2Vec2(-0.7, -0.4)))
         self.create_circle_shape(self.left_wheel_data, radius=0.4, density=100.0, friction=5.0,
-                                 group_index=-self.group_index, color=(0.5, 0.5, 0.5), shading='edge')
+                                 group_index=-self.group_index, color=(0.6, 0.8, 0.4), shading='edge')
         self.left_joint_data = self.create_revolute_joint(self.frame_data, self.left_wheel_data,
                                                           self.left_wheel_data.body.GetWorldCenter(),
                                                           motor_speed=-20.0, max_motor_torque=7000.0)
         self.right_wheel_data = self.create_body(position=(position + b2Vec2(0.7, -0.4)))
         self.create_circle_shape(self.right_wheel_data, radius=0.4, density=100.0, friction=5.0,
-                                 group_index=-self.group_index, color=(0.5, 0.5, 0.5), shading='edge')
+                                 group_index=-self.group_index, color=(0.6, 0.8, 0.4), shading='edge')
         self.right_joint_data = self.create_revolute_joint(self.frame_data, self.right_wheel_data,
                                                       self.right_wheel_data.body.GetWorldCenter(),
                                                       motor_speed=20.0, max_motor_torque=7000.0)

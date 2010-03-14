@@ -57,8 +57,10 @@ class GameEngine(object):
         self.background_image = pyglet.resource.image('resources/images/cave.jpg')
         self.background_image.anchor_x = self.background_image.width // 2
         self.background_image.anchor_y = self.background_image.height // 2
-        self.lighting_image = pyglet.resource.image('resources/images/cave-lighting.jpg')
-        self.lighting_image_data = self.lighting_image.image_data
+        self.background_color = 1.0, 0.8, 0.6
+        self.environment_image = pyglet.resource.image('resources/images/cave-lighting.jpg')
+        self.environment_image_data = self.environment_image.image_data
+        self.environment_scale = 1.5
 
     def delete(self):
         for actor in list(self.actors):
@@ -122,11 +124,18 @@ class GameEngine(object):
                 controller.step(dt)
 
     def draw(self, width, height):
-        self._update_environment_lights()
-        self.background_image.blit(width // 2, height // 2)
         self.camera.resolution = width, height
         if self.player_actor is not None:
             self.camera.position = self.player_actor.first_body_position
+        self._update_environment_lighting()
+        glPushAttrib(GL_ALL_ATTRIB_BITS)
+        glPushMatrix()
+        glColor3f(*self.background_color)
+        glScalef(1.2, 1.2, 1.2)
+        glTranslatef(-5.0 * self.camera.position[0], -5.0 * self.camera.position[1], 0.0)
+        self.background_image.blit(width // 2, height // 2)
+        glPopMatrix()
+        glPopAttrib()
         with self.camera:
             glPushAttrib(GL_ALL_ATTRIB_BITS)
             with self.lighting_manager:
@@ -136,14 +145,18 @@ class GameEngine(object):
             if self.debug_draw is not None:
                 self.debug_draw.draw()
 
-    def _update_environment_lights(self):
-        for scale, light in self.environment_lights:
+    def _update_environment_lighting(self):
+        for light_scale, light in self.environment_lights:
             x, y, z = normalize(light.direction)
-            x = self.lighting_image_data.width // 2 - int(float(self.lighting_image_data.width // 4) * x)
-            y = self.lighting_image_data.height // 2 - int(float(self.lighting_image_data.height // 4) * y)
-            r, g, b = sample_image(self.lighting_image_data, x, y)[:3]
-            light.color = scale * r, scale * g, scale * b
-
+            x = self.environment_image_data.width // 2 - int(float(self.environment_image_data.width // 4) * x)
+            y = self.environment_image_data.height // 2 - int(float(self.environment_image_data.height // 4) * y)
+            background_r, background_g, background_b = self.background_color
+            sample_r, sample_g, sample_b = sample_image(self.environment_image_data, x, y)[:3]
+            light_r = light_scale * self.environment_scale * background_r * sample_r
+            light_g = light_scale * self.environment_scale * background_g * sample_g
+            light_b = light_scale * self.environment_scale * background_b * sample_b
+            light.color = light_r, light_g, light_b
+            
     def on_key_press(self, key, modifiers):
         if self.player_actor is not None:
             self.player_actor.on_key_press(key, modifiers)
