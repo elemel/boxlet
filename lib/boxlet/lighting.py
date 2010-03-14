@@ -1,5 +1,8 @@
 from pyglet.gl import *
 
+CFloat3 = c_float * 3
+CFloat4 = c_float * 4
+
 class LightingManager(object):
     def __init__(self, count=8, enabled=False):
         self._alloc = iter(xrange(GL_LIGHT0, GL_LIGHT0 + count))
@@ -42,6 +45,18 @@ class Light(object):
         self._light_name = self._lighting_manager.alloc()
         self.enabled = enabled
 
+        # No special handling of GL_LIGHT0 for the diffuse and specular term.
+        glLightfv(self._light_name, GL_AMBIENT, CFloat4(0.0, 0.0, 0.0, 1.0))
+        glLightfv(self._light_name, GL_DIFFUSE, CFloat4(0.0, 0.0, 0.0, 1.0))
+        glLightfv(self._light_name, GL_SPECULAR, CFloat4(0.0, 0.0, 0.0, 1.0))
+        glLightfv(self._light_name, GL_POSITION, CFloat4(0.0, 0.0, 1.0, 0.0))
+        glLightfv(self._light_name, GL_SPOT_DIRECTION, CFloat3(0.0, 0.0, -1.0))
+        glLightf(self._light_name, GL_SPOT_EXPONENT, 0.0)
+        glLightf(self._light_name, GL_SPOT_CUTOFF, 180.0)
+        glLightf(self._light_name, GL_CONSTANT_ATTENUATION, 1.0)
+        glLightf(self._light_name, GL_LINEAR_ATTENUATION, 1.0)
+        glLightf(self._light_name, GL_QUADRATIC_ATTENUATION, 1.0)
+
     def delete(self):
         if self._lighting_manager is not None:
             self.enabled = False
@@ -77,7 +92,7 @@ class DirectionalLight(Light):
     def color(self, color):
         self._color = color
         r, g, b = self._color
-        color = (c_float * 4)(r, g, b, 1.0)
+        color = CFloat4(r, g, b, 1.0)
         glLightfv(self._light_name, GL_DIFFUSE, color)
         glLightfv(self._light_name, GL_SPECULAR, color)
 
@@ -89,5 +104,5 @@ class DirectionalLight(Light):
     def direction(self, direction):
         self._direction = direction
         x, y, z = self._direction
-        position = (c_float * 4)(-x, -y, -z, 0.0)
+        position = CFloat4(-x, -y, -z, 0.0)
         glLightfv(self._light_name, GL_POSITION, position)
