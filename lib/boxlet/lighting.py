@@ -55,8 +55,8 @@ class Light(object):
         glLightf(self._light_name, GL_SPOT_EXPONENT, 0.0)
         glLightf(self._light_name, GL_SPOT_CUTOFF, 180.0)
         glLightf(self._light_name, GL_CONSTANT_ATTENUATION, 1.0)
-        glLightf(self._light_name, GL_LINEAR_ATTENUATION, 1.0)
-        glLightf(self._light_name, GL_QUADRATIC_ATTENUATION, 1.0)
+        glLightf(self._light_name, GL_LINEAR_ATTENUATION, 0.0)
+        glLightf(self._light_name, GL_QUADRATIC_ATTENUATION, 0.0)
 
     def delete(self):
         if self._lighting_manager is not None:
@@ -107,3 +107,66 @@ class DirectionalLight(Light):
         x, y, z = self._direction
         position = CFloat4(-x, -y, -z, 0.0)
         glLightfv(self._light_name, GL_POSITION, position)
+
+class SpotLight(Light):
+    def __init__(self, lighting_manager, color=(1.0, 1.0, 1.0),
+                 position=(0.0, 0.0, 1.0), direction=(0.0, 0.0, -1.0),
+                 exponent=0.0, cutoff=45.0, enabled=True):
+        assert isinstance(lighting_manager, LightingManager)
+        super(SpotLight, self).__init__(lighting_manager, enabled)
+        self.color = color
+        self.position = position
+        self.direction = direction
+        self.exponent = exponent
+        self.cutoff = cutoff
+ 
+    @property
+    def color(self):
+        return self._color
+
+    @color.setter
+    def color(self, color):
+        self._color = color
+        r, g, b = self._color
+        color = CFloat4(r, g, b, 1.0)
+        glLightfv(self._light_name, GL_DIFFUSE, color)
+        glLightfv(self._light_name, GL_SPECULAR, color)
+
+    @property
+    def position(self):
+        return self._position
+
+    @position.setter
+    def position(self, position):
+        self._position = position
+        x, y, z = self._position
+        position = CFloat4(x, y, z, 1.0)
+        glLightfv(self._light_name, GL_POSITION, position)
+
+    @property
+    def direction(self):
+        return self._direction
+
+    @direction.setter
+    def direction(self, direction):
+        self._direction = direction
+        glLightfv(self._light_name, GL_SPOT_DIRECTION,
+                  CFloat3(*self._direction))
+
+    @property
+    def exponent(self):
+        return self._exponent
+
+    @exponent.setter
+    def exponent(self, exponent):
+        self._exponent = exponent
+        glLightf(self._light_name, GL_SPOT_EXPONENT, self._exponent)
+
+    @property
+    def cutoff(self):
+        return self._cutoff
+
+    @cutoff.setter
+    def cutoff(self, cutoff):
+        self._cutoff = cutoff
+        glLightf(self._light_name, GL_SPOT_CUTOFF, self._cutoff)

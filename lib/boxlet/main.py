@@ -38,6 +38,27 @@ class MyWindow(pyglet.window.Window):
     def on_key_release(self, key, modifiers):
         self.game_engine.on_key_release(key, modifiers)
 
+    def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
+        self.game_engine.on_mouse_drag(x, y, dx, dy, buttons, modifiers)
+
+    def on_mouse_enter(self, x, y):
+        self.game_engine.on_mouse_enter(x, y)
+
+    def on_mouse_leave(self, x, y):
+        self.game_engine.on_mouse_leave(x, y)
+
+    def on_mouse_motion(self, x, y, dx, dy):
+        self.game_engine.on_mouse_motion(x, y, dx, dy)
+
+    def on_mouse_press(self, x, y, button, modifiers):
+        self.game_engine.on_mouse_press(x, y, button, modifiers)
+
+    def on_mouse_release(self, x, y, button, modifiers):
+        self.game_engine.on_mouse_release(x, y, button, modifiers)
+
+    def on_mouse_scroll(self, x, y, scroll_x, scroll_y):
+        self.game_engine.on_mouse_scroll(x, y, scroll_x, scroll_y)
+
 def main():
     config = pyglet.gl.Config(double_buffer=True, sample_buffers=1, samples=4,
                               depth_size=8)

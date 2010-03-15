@@ -62,6 +62,7 @@ class GameEngine(object):
         self.environment_image = pyglet.resource.image('resources/images/cave-lighting.jpg')
         self.environment_image_data = self.environment_image.image_data
         self.environment_scale = 1.5
+        self.mouse_position = 0, 0
 
     def delete(self):
         for actor in list(self.actors):
@@ -95,6 +96,7 @@ class GameEngine(object):
                                    direction=(1.0, 1.0, -1.0))
         self.environment_lights = [(1.0, light_1), (0.5, light_2),
                                    (0.1, light_3), (0.2, light_4)]
+        self.mouse_light = SpotLight(self.lighting_manager)
 
     def _init_world(self):
         aabb = b2AABB()
@@ -128,6 +130,8 @@ class GameEngine(object):
         self.camera.resolution = width, height
         if self.player_actor is not None:
             self.camera.position = self.player_actor.first_body_position
+        mouse_x, mouse_y = self.mouse_position
+        self.mouse_light.position = mouse_x, mouse_y, 100.0
         self._update_environment_lighting()
         glPushAttrib(GL_ALL_ATTRIB_BITS)
         glPushMatrix()
@@ -167,6 +171,27 @@ class GameEngine(object):
     def on_key_release(self, key, modifiers):
         if self.player_actor is not None:
             self.player_actor.on_key_release(key, modifiers)
+
+    def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
+        self.mouse_position = x, y
+
+    def on_mouse_enter(self, x, y):
+        self.mouse_position = x, y
+
+    def on_mouse_leave(self, x, y):
+        self.mouse_position = x, y
+
+    def on_mouse_motion(self, x, y, dx, dy):
+        self.mouse_position = x, y
+
+    def on_mouse_press(self, x, y, button, modifiers):
+        self.mouse_position = x, y
+
+    def on_mouse_release(self, x, y, button, modifiers):
+        self.mouse_position = x, y
+
+    def on_mouse_scroll(self, x, y, scroll_x, scroll_y):
+        self.mouse_position = x, y
 
 class Scheduler(object):
     def __init__(self):
