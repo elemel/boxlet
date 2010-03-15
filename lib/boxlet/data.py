@@ -5,13 +5,20 @@ from Box2D import *
 from pyglet.gl import *
 
 class BodyData(object):
-    def __init__(self, actor, body):
+    def __init__(self, actor, position=(0.0, 0.0), angle=0.0,
+                 linear_velocity=(0.0, 0.0), angular_velocity=0.0,
+                 angular_damping=0.0):
         assert isinstance(actor, boxlet.actors.Actor)
-        assert isinstance(body, b2Body)
         self.actor = actor
         self.actor.bodies.add(self)
-        self.body = body
+        body_def = b2BodyDef()
+        body_def.position = position
+        body_def.angle = angle
+        body_def.angularDamping = angular_damping
+        self.body = self.actor.game_engine.world.CreateBody(body_def)
         self.body.userData = self
+        self.body.SetLinearVelocity(linear_velocity)
+        self.body.SetAngularVelocity(angular_velocity)
         self.vertex_list_dirty = True
         self.vertex_list = None
 
@@ -70,7 +77,7 @@ class BodyData(object):
         colors = []
         for shape_data in self.shapes:
             color = tuple(float_to_ubyte(f) for f in shape_data.color)
-            for p1, p2, p3 in shape_data.local_triangles:
+            for p1, p2, p3 in shape_data.get_triangles():
                 if shape_data.shading == 'flat':
                     n1 = n2 = n3 = 0.0, 0.0, 1.0
                 elif shape_data.shading == 'vertex':
@@ -112,27 +119,55 @@ class ShapeData(object):
             self.actor.shapes.remove(self)
             self.actor = None
 
-    @property
-    def local_triangles(self):
-        if isinstance(self.shape, b2PolygonShape):
-            return get_polygon_triangles(self.shape.vertices)
-        elif isinstance(self.shape, b2CircleShape):
-            return get_circle_triangles(self.shape.localPosition.tuple(),
-                                        self.shape.radius)
-        else:
-            assert False
+    def get_triangles(self):
+        raise NotImplementedError()
 
-    @property
-    def world_triangles(self):
-        if isinstance(self.shape, b2PolygonShape):
-            vertices = [self.shape.body.GetWorldPoint(v)
-                        for v in self.shape.vertices]
-            return get_polygon_triangles(vertices)
-        elif isinstance(self.shape, b2CircleShape):
-            center = self.shape.body.GetWorldPoint(self.shape.localPosition)
-            return get_circle_triangles(center, self.shape.radius)
-        else:
-            assert False
+class PolygonShapeData(ShapeData):
+    def __init__(self, actor, body_data, vertices=None, density=0.0,
+                 friction=0.2, restitution=0.0, group_index=0, sensor=False,
+                 color=(1.0, 1.0, 1.0), shading='vertex'):
+        assert isinstance(body_data, boxlet.data.BodyData)
+        assert body_data.body is not None
+        shape_def = b2PolygonDef()
+        shape_def.vertices = vertices
+        shape_def.density = density
+        shape_def.friction = friction
+        shape_def.restitution = restitution
+        shape_def.filter.groupIndex = group_index
+        shape_def.isSensor = sensor
+        shape = body_data.body.CreateShape(shape_def).asPolygon()
+        body_data.body.SetMassFromShapes()
+        return super(PolygonShapeData, self).__init__(actor=actor, shape=shape,
+                                                      color=color,
+                                                      shading=shading)
+
+    def get_triangles(self):
+        return get_polygon_triangles(self.shape.vertices)
+
+class CircleShapeData(ShapeData):
+    def __init__(self, actor, body_data, local_position=(0.0, 0.0),
+                 radius=1.0, density=0.0, friction=0.2,
+                 restitution=0.0, group_index=0, sensor=False,
+                 color=(1.0, 1.0, 1.0), shading='vertex'):
+        assert isinstance(body_data, boxlet.data.BodyData)
+        assert body_data.body is not None
+        shape_def = b2CircleDef()
+        shape_def.localPosition = local_position
+        shape_def.radius = radius
+        shape_def.density = density
+        shape_def.friction = friction
+        shape_def.restitution = restitution
+        shape_def.filter.groupIndex = group_index
+        shape_def.isSensor = sensor
+        shape = body_data.body.CreateShape(shape_def).asCircle()
+        body_data.body.SetMassFromShapes()
+        return super(CircleShapeData, self).__init__(actor=actor, shape=shape,
+                                                     color=color,
+                                                     shading=shading)
+
+    def get_triangles(self):
+        return get_circle_triangles(self.shape.localPosition.tuple(),
+                                    self.shape.radius)
 
 class JointData(object):
     def __init__(self, actor, joint):
@@ -151,3 +186,26 @@ class JointData(object):
         if self.actor is not None:
             self.actor.joints.remove(self)
             self.actor = None
+
+class RevoluteJointData(JointData):
+    def __init__(self, actor, body_data_1, body_data_2, anchor,
+                 motor_speed=0.0, max_motor_torque=0.0):
+        assert isinstance(body_data_1, boxlet.data.BodyData)
+        assert isinstance(body_data_2, boxlet.data.BodyData)
+        joint_def = b2RevoluteJointDef()
+        joint_def.Initialize(body_data_1.body, body_data_2.body, anchor)
+        joint_def.motorSpeed = motor_speed
+        joint_def.maxMotorTorque = max_motor_torque
+        joint = actor.game_engine.world.CreateJoint(joint_def).asRevoluteJoint()
+        super(RevoluteJointData, self).__init__(actor=actor, joint=joint)
+
+class DistanceJointData(JointData):
+    def __init__(self, actor, body_data_1, body_data_2, anchor_1, anchor_2):
+        assert isinstance(body_data_1, boxlet.data.BodyData)
+        assert isinstance(body_data_2, boxlet.data.BodyData)
+        joint_def = b2DistanceJointDef()
+        joint_def.Initialize(body_data_1.body, body_data_2.body, anchor_1,
+                             anchor_2)
+        joint = actor.game_engine.world.CreateJoint(joint_def).asDistanceJoint()
+        super(DistanceJointData, self).__init__(actor=actor, joint=joint)
+
