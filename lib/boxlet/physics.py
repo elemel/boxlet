@@ -126,7 +126,8 @@ class PolygonShapeData(ShapeData):
     def __init__(self, actor, body_data, vertices=None, density=0.0,
                  friction=0.2, restitution=0.0, group_index=0, sensor=False,
                  color=(1.0, 1.0, 1.0), shading='vertex'):
-        assert isinstance(body_data, boxlet.data.BodyData)
+        assert isinstance(actor, boxlet.actors.Actor)
+        assert isinstance(body_data, BodyData)
         assert body_data.body is not None
         shape_def = b2PolygonDef()
         shape_def.vertices = vertices
@@ -149,7 +150,8 @@ class CircleShapeData(ShapeData):
                  radius=1.0, density=0.0, friction=0.2,
                  restitution=0.0, group_index=0, sensor=False,
                  color=(1.0, 1.0, 1.0), shading='vertex'):
-        assert isinstance(body_data, boxlet.data.BodyData)
+        assert isinstance(actor, boxlet.actors.Actor)
+        assert isinstance(body_data, BodyData)
         assert body_data.body is not None
         shape_def = b2CircleDef()
         shape_def.localPosition = local_position
@@ -190,8 +192,9 @@ class JointData(object):
 class RevoluteJointData(JointData):
     def __init__(self, actor, body_data_1, body_data_2, anchor,
                  motor_speed=0.0, max_motor_torque=0.0):
-        assert isinstance(body_data_1, boxlet.data.BodyData)
-        assert isinstance(body_data_2, boxlet.data.BodyData)
+        assert isinstance(actor, boxlet.actors.Actor)
+        assert isinstance(body_data_1, BodyData)
+        assert isinstance(body_data_2, BodyData)
         joint_def = b2RevoluteJointDef()
         joint_def.Initialize(body_data_1.body, body_data_2.body, anchor)
         joint_def.motorSpeed = motor_speed
@@ -201,8 +204,9 @@ class RevoluteJointData(JointData):
 
 class DistanceJointData(JointData):
     def __init__(self, actor, body_data_1, body_data_2, anchor_1, anchor_2):
-        assert isinstance(body_data_1, boxlet.data.BodyData)
-        assert isinstance(body_data_2, boxlet.data.BodyData)
+        assert isinstance(actor, boxlet.actors.Actor)
+        assert isinstance(body_data_1, BodyData)
+        assert isinstance(body_data_2, BodyData)
         joint_def = b2DistanceJointDef()
         joint_def.Initialize(body_data_1.body, body_data_2.body, anchor_1,
                              anchor_2)

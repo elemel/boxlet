@@ -1,4 +1,4 @@
-import boxlet.data
+import boxlet.physics
 import boxlet.game_engine
 from boxlet.utils import *
 
@@ -49,11 +49,11 @@ class WaterActor(Actor):
     def __init__(self, game_engine, vertices=None, color=(0.0, 1.0, 2.0),
                  opacity=0.5):
         super(WaterActor, self).__init__(game_engine)
-        body_data = boxlet.data.BodyData(actor=self)
-        shape_data = boxlet.data.PolygonShapeData(actor=self,
-                                                  body_data=body_data,
-                                                  vertices=vertices,
-                                                  sensor=True)
+        body_data = boxlet.physics.BodyData(actor=self)
+        shape_data = boxlet.physics.PolygonShapeData(actor=self,
+                                                     body_data=body_data,
+                                                     vertices=vertices,
+                                                     sensor=True)
         self.surface_y = body_data.body.position.y
         self.vertices = shape_data.shape.asPolygon().vertices
         self.color = color
@@ -77,40 +77,44 @@ class WaterActor(Actor):
 class TestPlatformActor(Actor):
     def __init__(self, game_engine, position=(0.0, 0.0), angle=0.0):
         super(TestPlatformActor, self).__init__(game_engine)
-        body_data = boxlet.data.BodyData(actor=self, position=position,
-                                         angle=angle)
-        boxlet.data.PolygonShapeData(actor=self, body_data=body_data,
-                                     vertices=get_box_vertices(5.0, 0.1),
-                                     color=(1.0, 0.5, 0.0))
+        body_data = boxlet.physics.BodyData(actor=self, position=position,
+                                            angle=angle)
+        boxlet.physics.PolygonShapeData(actor=self, body_data=body_data,
+                                        vertices=get_box_vertices(5.0, 0.1),
+                                        color=(1.0, 0.5, 0.0))
 
 class TestVehicleActor(Actor):
     def __init__(self, game_engine, position=(0.0, 0.0)):
         super(TestVehicleActor, self).__init__(game_engine)
         position = b2Vec2(position[0], position[1])
-        self.frame_data = boxlet.data.BodyData(actor=self, position=position)
-        boxlet.data.PolygonShapeData(actor=self, body_data=self.frame_data,
-                                     vertices=[(-1.0, -0.5), (1.0, -0.5),
-                                               (0.5, 0.7), (-0.5, 0.7)],
-                                     density=1000.0,
-                                     group_index=-self.group_index,
-                                     color=(1.0, 1.0, 1.0))
-        self.left_wheel_data = boxlet.data.BodyData(actor=self, position=(position + b2Vec2(-0.7, -0.4)))
-        boxlet.data.CircleShapeData(actor=self, body_data=self.left_wheel_data,
-                                    radius=0.4, density=100.0, friction=5.0,
-                                    group_index=-self.group_index,
-                                    color=(0.6, 0.8, 0.4), shading='edge')
-        self.left_joint_data = boxlet.data.RevoluteJointData(actor=self, body_data_1=self.frame_data, body_data_2=self.left_wheel_data,
-                                                             anchor=self.left_wheel_data.body.GetWorldCenter(),
-                                                             motor_speed=-20.0, max_motor_torque=7000.0)
-        self.right_wheel_data = boxlet.data.BodyData(actor=self, position=(position + b2Vec2(0.7, -0.4)))
-        boxlet.data.CircleShapeData(actor=self,
+        self.frame_data = boxlet.physics.BodyData(actor=self,
+                                                  position=position)
+        boxlet.physics.PolygonShapeData(actor=self, body_data=self.frame_data,
+                                        vertices=[(-1.0, -0.5), (1.0, -0.5),
+                                                  (0.5, 0.7), (-0.5, 0.7)],
+                                        density=1000.0,
+                                        group_index=-self.group_index,
+                                        color=(1.0, 1.0, 1.0))
+        self.left_wheel_data = boxlet.physics.BodyData(actor=self,
+                                                       position=(position +
+                                                                 b2Vec2(-0.7,
+                                                                        -0.4)))
+        boxlet.physics.CircleShapeData(actor=self, body_data=self.left_wheel_data,
+                                       radius=0.4, density=100.0, friction=5.0,
+                                       group_index=-self.group_index,
+                                       color=(0.6, 0.8, 0.4), shading='edge')
+        self.left_joint_data = boxlet.physics.RevoluteJointData(actor=self, body_data_1=self.frame_data, body_data_2=self.left_wheel_data,
+                                                                anchor=self.left_wheel_data.body.GetWorldCenter(),
+                                                                motor_speed=-20.0, max_motor_torque=7000.0)
+        self.right_wheel_data = boxlet.physics.BodyData(actor=self, position=(position + b2Vec2(0.7, -0.4)))
+        boxlet.physics.CircleShapeData(actor=self,
                                     body_data=self.right_wheel_data,
                                     radius=0.4, density=100.0, friction=5.0,
                                     group_index=-self.group_index,
                                     color=(0.6, 0.8, 0.4), shading='edge')
-        self.right_joint_data = boxlet.data.RevoluteJointData(actor=self, body_data_1=self.frame_data, body_data_2=self.right_wheel_data,
-                                                      anchor=self.right_wheel_data.body.GetWorldCenter(),
-                                                      motor_speed=20.0, max_motor_torque=7000.0)
+        self.right_joint_data = boxlet.physics.RevoluteJointData(actor=self, body_data_1=self.frame_data, body_data_2=self.right_wheel_data,
+                                                                 anchor=self.right_wheel_data.body.GetWorldCenter(),
+                                                                 motor_speed=20.0, max_motor_torque=7000.0)
 
     def on_key_press(self, key, modifiers):
         if key == pyglet.window.key.LEFT:
