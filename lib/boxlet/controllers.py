@@ -1,4 +1,7 @@
+import boxlet.actors
 import boxlet.game_engine
+
+from Box2D import *
 
 class Controller(object):
     def __init__(self, game_engine):
@@ -13,3 +16,24 @@ class Controller(object):
 
     def step(self, dt):
         pass
+
+class ActorController(Controller):
+    def __init__(self, actor):
+        assert isinstance(actor, boxlet.actors.Actor)
+        super(ActorController, self).__init__(actor.game_engine)
+        self.actor = actor
+
+    def delete(self):
+        if self.actor is not None:
+            self.actor.controllers.remove(self)
+            self.actor = None
+        super(ActorController, self).delete()
+
+class ParticleGravityController(ActorController):
+    def __init__(self, actor, gravity):
+        super(ParticleGravityController, self).__init__(actor)
+        self.gravity = b2Vec2(*gravity)
+
+    def step(self, dt):
+        for body_data in self.actor.bodies:
+            body_data.body.linearVelocity += dt * self.gravity

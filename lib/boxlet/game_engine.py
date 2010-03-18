@@ -4,9 +4,9 @@ from boxlet.debug_draw import *
 from boxlet.lighting import *
 from boxlet.utils import *
 
-from Box2D import *
 import contextlib
 from ctypes import c_float
+from heapq import heappush, heappop
 import math
 import pyglet
 from pyglet.gl import *
@@ -110,6 +110,7 @@ class GameEngine(object):
         boxlet.actors.TestPlatformActor(self, position=(9.0, -2.0), angle=0.1)
         boxlet.actors.WaterActor(self, vertices=get_box_vertices(half_width=10.0))
         self.player_actor = boxlet.actors.TestVehicleActor(self, position=(-3.0, 3.0))
+        boxlet.actors.FireActor(game_engine=self, position=(5.0, 5.0))
 
     def step(self, dt):
         self.time += dt
@@ -192,6 +193,12 @@ class GameEngine(object):
 
     def on_mouse_scroll(self, x, y, scroll_x, scroll_y):
         self.mouse_position = x, y
+
+    def schedule(self, dt, func, *args, **kwargs):
+        return self.scheduler.schedule(self.time + dt, func, *args, **kwargs)
+
+    def unschedule(self, call):
+        self.scheduler.unschedule(call)
 
 class Scheduler(object):
     def __init__(self):

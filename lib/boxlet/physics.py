@@ -7,13 +7,14 @@ from pyglet.gl import *
 class BodyData(object):
     def __init__(self, actor, position=(0.0, 0.0), angle=0.0,
                  linear_velocity=(0.0, 0.0), angular_velocity=0.0,
-                 angular_damping=0.0):
+                 linear_damping=0.0, angular_damping=0.0):
         assert isinstance(actor, boxlet.actors.Actor)
         self.actor = actor
         self.actor.bodies.add(self)
         body_def = b2BodyDef()
         body_def.position = position
         body_def.angle = angle
+        body_def.linearDamping = linear_damping
         body_def.angularDamping = angular_damping
         self.body = self.actor.game_engine.world.CreateBody(body_def)
         self.body.userData = self

@@ -1,9 +1,11 @@
-import boxlet.physics
+import boxlet.controllers
 import boxlet.game_engine
+import boxlet.physics
 from boxlet.utils import *
 
 from Box2D import *
 from pyglet.gl import *
+import random
 
 class Actor(object):
     def __init__(self, game_engine):
@@ -14,8 +16,12 @@ class Actor(object):
         self.bodies = set()
         self.shapes = set()
         self.joints = set()
+        self.controllers = set()
 
     def delete(self):
+        for controller in list(self.controllers):
+            controller.delete()
+        assert not self.controllers
         for joint_data in list(self.joints):
             joint_data.delete()
         assert not self.joints
@@ -73,6 +79,40 @@ class WaterActor(Actor):
                 glTexCoord2f(x, y)
                 glVertex2f(x, y)
             glEnd()
+
+class ParticleActor(Actor):
+    def __init__(self, game_engine, position=(0.0, 0.0)):
+        super(ParticleActor, self).__init__(game_engine)
+        self.position = position
+
+class FireActor(ParticleActor):
+    def __init__(self, game_engine, position):
+        super(FireActor, self).__init__(game_engine, position)
+        boxlet.controllers.ParticleGravityController(self, (0.0, 15.0))
+        self.emit()
+
+    def emit(self):
+        linear_velocity = random.uniform(-2.0, 2.0), random.uniform(-2.0, 2.0)
+        body_data = boxlet.physics.BodyData(actor=self, position=self.position,
+                                            linear_velocity=linear_velocity,
+                                            linear_damping=2.0)
+        boxlet.physics.CircleShapeData(actor=self, body_data=body_data,
+                                       radius=0.05, density=100.0, sensor=True)
+        body_data.time = self.game_engine.time
+        self.game_engine.schedule(1.0, body_data.delete)
+        self.game_engine.schedule(1.0 / 60.0, self.emit)
+
+    def draw(self):
+        glPushAttrib(GL_COLOR_BUFFER_BIT)
+        glBlendFunc(GL_ONE, GL_ONE)
+        glPointSize(20.0)
+        glBegin(GL_POINTS)
+        for body_data in self.bodies:
+            time = self.game_engine.time - body_data.time
+            glColor3f(1.0 - time, 0.5 - time, 0.2 - time)
+            glVertex2f(body_data.body.position.x, body_data.body.position.y)
+        glEnd()
+        glPopAttrib()
 
 class TestPlatformActor(Actor):
     def __init__(self, game_engine, position=(0.0, 0.0), angle=0.0):
